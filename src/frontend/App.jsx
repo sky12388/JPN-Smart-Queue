@@ -3,6 +3,7 @@ import { io } from 'socket.io-client';
 import confetti from 'canvas-confetti';
 import Navbar from './components/Navbar';
 import CitizenView from './components/CitizenView';
+import KioskView from './components/KioskView';
 import CounterView from './components/CounterView';
 import TvView from './components/TvView';
 import SupervisorView from './components/SupervisorView';
@@ -24,7 +25,7 @@ export default function App() {
   // Navigation View State (default to citizen or hash if present)
   const [activeView, setActiveView] = useState(() => {
     const hash = window.location.hash.replace('#', '');
-    return ['citizen', 'counter', 'tv', 'supervisor'].includes(hash) ? hash : 'citizen';
+    return ['citizen', 'kiosk', 'counter', 'tv', 'supervisor'].includes(hash) ? hash : 'citizen';
   });
 
   // App Data State
@@ -291,6 +292,14 @@ export default function App() {
             onIssueTicket={handleIssueTicket}
             onCheckinTicket={handleCheckinTicket}
             onCancelTicket={handleCancelTicket}
+          />
+        )}
+
+        {activeView === 'kiosk' && (
+          <KioskView
+            lang={lang}
+            waitingTickets={waitingTickets}
+            onCheckinTicket={handleCheckinTicket}
           />
         )}
 

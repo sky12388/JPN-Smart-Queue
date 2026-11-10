@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import { translations } from '../i18n';
+import { playScanBeep } from '../audio';
+import confetti from 'canvas-confetti';
 import { 
   QrCode, 
   MapPin, 
@@ -11,7 +14,9 @@ import {
   ArrowRight, 
   RefreshCw, 
   XCircle,
-  FileText,
+  Camera,
+  X,
+  ScanLine,
   Sparkles
 } from 'lucide-react';
 
@@ -36,6 +41,9 @@ export default function CitizenView({
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [checkinMessage, setCheckinMessage] = useState(null);
   const [timerSeconds, setTimerSeconds] = useState(900); // 15 mins countdown
+
+  // QR Scanner Modal State
+  const [showQrModal, setShowQrModal] = useState(false);
 
   // Countdown timer for 15-min arrival check-in safeguard
   useEffect(() => {
@@ -79,13 +87,16 @@ export default function CitizenView({
         async (position) => {
           const res = await onCheckinTicket(activeTicket.id, 'GPS', position.coords.latitude, position.coords.longitude);
           setCheckinMessage(res.message);
+          playScanBeep();
+          confetti({ particleCount: 50, spread: 50 });
           setIsCheckingIn(false);
         },
-        async (err) => {
-          // Fallback to simulated branch premises GPS coordinates
+        async () => {
           const branch = branches.find(b => b.id === activeTicket.branch_id) || { lat: 2.9234, lng: 101.6888 };
           const res = await onCheckinTicket(activeTicket.id, 'GPS', branch.lat, branch.lng);
           setCheckinMessage(res.message);
+          playScanBeep();
+          confetti({ particleCount: 50, spread: 50 });
           setIsCheckingIn(false);
         },
         { timeout: 5000 }
@@ -93,16 +104,22 @@ export default function CitizenView({
     } else {
       const res = await onCheckinTicket(activeTicket.id, 'GPS', 2.9234, 101.6888);
       setCheckinMessage(res.message);
+      playScanBeep();
+      confetti({ particleCount: 50, spread: 50 });
       setIsCheckingIn(false);
     }
   };
 
-  const handleQrCheckin = async () => {
+  // Triggered when scanning premises QR code
+  const handleConfirmQrScan = async (scannedCode = 'JPN-GATE-KIOSK-01') => {
     setIsCheckingIn(true);
-    // Simulate kiosk QR scanner confirmation
-    const res = await onCheckinTicket(activeTicket.id, 'QR_KIOSK', null, null, 'JPN-KIOSK-GATE-1');
+    playScanBeep();
+    confetti({ particleCount: 70, spread: 60 });
+
+    const res = await onCheckinTicket(activeTicket.id, 'QR_KIOSK', null, null, scannedCode);
     setCheckinMessage(res.message);
     setIsCheckingIn(false);
+    setShowQrModal(false);
   };
 
   return (
@@ -389,11 +406,11 @@ export default function CitizenView({
                     </button>
 
                     <button
-                      onClick={handleQrCheckin}
+                      onClick={() => setShowQrModal(true)}
                       disabled={isCheckingIn}
                       className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center space-x-1.5 shadow-sm active:scale-95 transition disabled:opacity-50"
                     >
-                      <QrCode className="w-4 h-4" />
+                      <Camera className="w-4 h-4" />
                       <span>{t.btnQrCheckin}</span>
                     </button>
                   </div>
@@ -406,14 +423,25 @@ export default function CitizenView({
                 </div>
               )}
 
-              {/* QR Verification Visual Placeholder */}
+              {/* Real Scannable Dynamic QR Code for Citizen */}
               <div className="py-2 flex flex-col items-center justify-center">
-                <div className="w-32 h-32 bg-slate-100 dark:bg-slate-800 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 flex flex-col items-center justify-center p-3 text-center">
-                  <QrCode className="w-16 h-16 text-slate-700 dark:text-slate-300" />
-                  <span className="text-[10px] text-slate-400 font-mono mt-1">{activeTicket.ticket_number}</span>
+                <div className="p-3 bg-white rounded-2xl shadow-md border-2 border-slate-200 dark:border-slate-700">
+                  <QRCodeSVG
+                    value={JSON.stringify({
+                      ticket_id: activeTicket.id,
+                      ticket_number: activeTicket.ticket_number,
+                      branch: activeTicket.branch_id,
+                      ic: activeTicket.ic_number
+                    })}
+                    size={140}
+                    level="M"
+                  />
                 </div>
-                <span className="text-[11px] text-slate-400 mt-2">
-                  Imbas di kiosk pintu masuk atau tunjukkan kepada pegawai kaunter
+                <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-2 font-mono">
+                  Tiket Maya #{activeTicket.ticket_number}
+                </span>
+                <span className="text-[10px] text-slate-400">
+                  Tunjukkan kod ini kepada pegawai kaunter atau imbas di kiosk pintu masuk
                 </span>
               </div>
 
@@ -435,6 +463,63 @@ export default function CitizenView({
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 <span>Ambil Tiket Lain</span>
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Interactive QR Camera Scanner Viewfinder Modal */}
+      {showQrModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-sm w-full overflow-hidden shadow-2xl border border-slate-200 dark:border-slate-800 relative animate-in fade-in zoom-in-95 duration-200">
+            
+            {/* Modal Header */}
+            <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Camera className="w-4 h-4 text-blue-400" />
+                <span className="text-xs font-bold uppercase tracking-wider">Pengimbas Kod QR Premis</span>
+              </div>
+              <button
+                onClick={() => setShowQrModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Simulated Camera Viewfinder */}
+            <div className="p-6 text-center space-y-4">
+              <div className="relative w-56 h-56 mx-auto bg-slate-950 rounded-2xl overflow-hidden flex items-center justify-center border-2 border-slate-800">
+                {/* Viewfinder crosshairs */}
+                <div className="absolute top-4 left-4 w-6 h-6 border-t-2 border-l-2 border-emerald-400" />
+                <div className="absolute top-4 right-4 w-6 h-6 border-t-2 border-r-2 border-emerald-400" />
+                <div className="absolute bottom-4 left-4 w-6 h-6 border-b-2 border-l-2 border-emerald-400" />
+                <div className="absolute bottom-4 right-4 w-6 h-6 border-b-2 border-r-2 border-emerald-400" />
+
+                {/* Animated Laser Scanning Line */}
+                <div className="absolute inset-x-4 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_12px_#34d399] animate-pulse-fast top-1/2 -translate-y-1/2" />
+
+                <div className="text-center p-4">
+                  <QrCode className="w-20 h-20 text-slate-700 mx-auto" />
+                  <p className="text-[11px] text-emerald-400 font-mono mt-2 animate-pulse">
+                    Mencari Kod QR Kiosk...
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Arahkan kamera ke tablet kiosk di pintu masuk JPN Putrajaya untuk mengesahkan kehadiran anda.
+              </p>
+
+              {/* Simulation One-Click Button */}
+              <button
+                onClick={() => handleConfirmQrScan('JPN-PUTRAJAYA-GATE-1')}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-3 px-4 rounded-xl text-xs flex items-center justify-center space-x-2 shadow-lg shadow-emerald-600/30 active:scale-95 transition"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Simulasikan Imbasan QR Berjaya</span>
               </button>
             </div>
 

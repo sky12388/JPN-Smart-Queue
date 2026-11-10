@@ -9,7 +9,8 @@ import {
   Sun, 
   Globe, 
   Radio, 
-  Building2 
+  Building2,
+  ScanLine
 } from 'lucide-react';
 
 export default function Navbar({ 
@@ -60,6 +61,18 @@ export default function Navbar({
             >
               <Smartphone className="w-3.5 h-3.5" />
               <span>{t.navCitizen}</span>
+            </button>
+
+            <button
+              onClick={() => setActiveView('kiosk')}
+              className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                activeView === 'kiosk'
+                  ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <ScanLine className="w-3.5 h-3.5" />
+              <span>Kiosk Pintu Masuk</span>
             </button>
 
             <button
@@ -151,6 +164,14 @@ export default function Navbar({
             }`}
           >
             {t.navCitizen}
+          </button>
+          <button
+            onClick={() => setActiveView('kiosk')}
+            className={`px-3 py-1 rounded-md text-xs font-semibold whitespace-nowrap ${
+              activeView === 'kiosk' ? 'bg-blue-600 text-white' : 'text-slate-600 dark:text-slate-300'
+            }`}
+          >
+            Kiosk Pintu
           </button>
           <button
             onClick={() => setActiveView('counter')}
