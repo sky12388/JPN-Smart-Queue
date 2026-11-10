@@ -1,0 +1,447 @@
+import React, { useState, useEffect } from 'react';
+import { translations } from '../i18n';
+import { 
+  QrCode, 
+  MapPin, 
+  Clock, 
+  Users, 
+  AlertTriangle, 
+  CheckCircle2, 
+  ShieldCheck, 
+  ArrowRight, 
+  RefreshCw, 
+  XCircle,
+  FileText,
+  Sparkles
+} from 'lucide-react';
+
+export default function CitizenView({ 
+  lang, 
+  branches, 
+  categories, 
+  activeTicket, 
+  setActiveTicket, 
+  onIssueTicket, 
+  onCheckinTicket,
+  onCancelTicket
+}) {
+  const t = translations[lang];
+
+  const [selectedBranch, setSelectedBranch] = useState('PUTRAJAYA');
+  const [selectedCategory, setSelectedCategory] = useState('MYKAD');
+  const [citizenName, setCitizenName] = useState('');
+  const [icNumber, setIcNumber] = useState('');
+  const [phone, setPhone] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCheckingIn, setIsCheckingIn] = useState(false);
+  const [checkinMessage, setCheckinMessage] = useState(null);
+  const [timerSeconds, setTimerSeconds] = useState(900); // 15 mins countdown
+
+  // Countdown timer for 15-min arrival check-in safeguard
+  useEffect(() => {
+    let interval = null;
+    if (activeTicket && activeTicket.status === 'PENDING_CHECKIN') {
+      interval = setInterval(() => {
+        setTimerSeconds(prev => (prev > 0 ? prev - 1 : 0));
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [activeTicket]);
+
+  const formatTimer = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handleIssue = async (e) => {
+    e.preventDefault();
+    if (!citizenName || !icNumber) return;
+
+    setIsSubmitting(true);
+    await onIssueTicket({
+      branch_id: selectedBranch,
+      category_id: selectedCategory,
+      citizen_name: citizenName,
+      ic_number: icNumber,
+      phone: phone
+    });
+    setIsSubmitting(false);
+  };
+
+  const handleGpsCheckin = async () => {
+    setIsCheckingIn(true);
+    setCheckinMessage(null);
+
+    // Try HTML5 Geolocation API with fallback
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const res = await onCheckinTicket(activeTicket.id, 'GPS', position.coords.latitude, position.coords.longitude);
+          setCheckinMessage(res.message);
+          setIsCheckingIn(false);
+        },
+        async (err) => {
+          // Fallback to simulated branch premises GPS coordinates
+          const branch = branches.find(b => b.id === activeTicket.branch_id) || { lat: 2.9234, lng: 101.6888 };
+          const res = await onCheckinTicket(activeTicket.id, 'GPS', branch.lat, branch.lng);
+          setCheckinMessage(res.message);
+          setIsCheckingIn(false);
+        },
+        { timeout: 5000 }
+      );
+    } else {
+      const res = await onCheckinTicket(activeTicket.id, 'GPS', 2.9234, 101.6888);
+      setCheckinMessage(res.message);
+      setIsCheckingIn(false);
+    }
+  };
+
+  const handleQrCheckin = async () => {
+    setIsCheckingIn(true);
+    // Simulate kiosk QR scanner confirmation
+    const res = await onCheckinTicket(activeTicket.id, 'QR_KIOSK', null, null, 'JPN-KIOSK-GATE-1');
+    setCheckinMessage(res.message);
+    setIsCheckingIn(false);
+  };
+
+  return (
+    <div className="max-w-xl mx-auto px-4 py-6 sm:py-8">
+      
+      {/* If No Active Ticket: Show Ticket Application Form */}
+      {!activeTicket ? (
+        <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden transition-all">
+          
+          {/* Header Banner */}
+          <div className="bg-gradient-to-br from-blue-900 via-blue-800 to-indigo-950 p-6 text-white text-center relative overflow-hidden">
+            <div className="absolute -top-12 -right-12 w-40 h-40 bg-amber-400/10 rounded-full blur-2xl" />
+            <div className="inline-flex items-center space-x-2 bg-white/10 backdrop-blur-md px-3 py-1 rounded-full text-xs font-semibold text-amber-300 border border-white/10 mb-3">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Sistem Giliran Pintar & Maya</span>
+            </div>
+            <h2 className="text-xl sm:text-2xl font-black tracking-tight">{t.citizenTitle}</h2>
+            <p className="text-xs sm:text-sm text-blue-100/90 mt-1.5 max-w-sm mx-auto">
+              {t.citizenSubtitle}
+            </p>
+          </div>
+
+          {/* Form */}
+          <form onSubmit={handleIssue} className="p-6 space-y-5">
+            
+            {/* Branch Selector */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase tracking-wider">
+                {t.selectBranch}
+              </label>
+              <select
+                value={selectedBranch}
+                onChange={(e) => setSelectedBranch(e.target.value)}
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition"
+              >
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {lang === 'ms' ? b.name_ms : b.name_en}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Service Category */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wider">
+                {t.selectCategory}
+              </label>
+              <div className="grid grid-cols-1 gap-2.5">
+                {categories.map((cat) => {
+                  const isSelected = selectedCategory === cat.id;
+                  return (
+                    <div
+                      key={cat.id}
+                      onClick={() => setSelectedCategory(cat.id)}
+                      className={`p-3.5 rounded-2xl border-2 cursor-pointer transition-all flex items-start space-x-3.5 ${
+                        isSelected
+                          ? 'border-blue-600 bg-blue-50/70 dark:bg-blue-950/40 dark:border-blue-500 shadow-sm'
+                          : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40'
+                      }`}
+                    >
+                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-sm flex-shrink-0 ${
+                        isSelected 
+                          ? 'bg-blue-600 text-white' 
+                          : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                      }`}>
+                        {cat.code}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
+                            {lang === 'ms' ? cat.name_ms : cat.name_en}
+                          </h4>
+                          <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-800 px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700">
+                            ~{cat.avg_duration_mins} min
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
+                          {lang === 'ms' ? cat.description_ms : cat.description_en}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Applicant Name */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase tracking-wider">
+                {t.fullName} *
+              </label>
+              <input
+                type="text"
+                required
+                value={citizenName}
+                onChange={(e) => setCitizenName(e.target.value)}
+                placeholder="Contoh: Muhammad Ali bin Ismail"
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+
+            {/* MyKad Number & Mobile */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase tracking-wider">
+                  {t.icNumber} *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={icNumber}
+                  onChange={(e) => setIcNumber(e.target.value)}
+                  placeholder={t.icPlaceholder}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm font-mono text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase tracking-wider">
+                  {t.phoneNumber}
+                </label>
+                <input
+                  type="text"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder={t.phonePlaceholder}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm font-mono text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Security note */}
+            <div className="flex items-center space-x-2 text-[11px] text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/60 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-700/60">
+              <ShieldCheck className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+              <span>Dilindungi keselamatan Anti-Abuse (Strike Rule & Pengesahan MyKad).</span>
+            </div>
+
+            {/* Submit Button */}
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="w-full bg-gradient-to-r from-blue-700 to-indigo-800 hover:from-blue-800 hover:to-indigo-900 text-white font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-blue-600/30 active:scale-[0.99] transition flex items-center justify-center space-x-2 text-sm disabled:opacity-50"
+            >
+              {isSubmitting ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>{t.processing}</span>
+                </>
+              ) : (
+                <>
+                  <span>{t.btnGetTicket}</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          </form>
+        </div>
+      ) : (
+        /* Active Virtual Ticket Card */
+        <div className="space-y-4">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+            
+            {/* Top Status Header */}
+            <div className={`p-4 text-center transition-colors ${
+              activeTicket.status === 'CALLED'
+                ? 'bg-amber-500 text-white animate-pulse-fast'
+                : activeTicket.status === 'WAITING'
+                ? 'bg-blue-600 text-white'
+                : activeTicket.status === 'SERVING'
+                ? 'bg-emerald-600 text-white'
+                : activeTicket.status === 'PENDING_CHECKIN'
+                ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-300 border-b border-amber-200 dark:border-amber-800'
+                : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+            }`}>
+              <div className="text-xs font-bold uppercase tracking-widest">
+                {activeTicket.status === 'PENDING_CHECKIN' && t.statusPendingCheckin}
+                {activeTicket.status === 'WAITING' && t.statusWaiting}
+                {activeTicket.status === 'CALLED' && t.statusCalled}
+                {activeTicket.status === 'SERVING' && t.statusServing}
+                {activeTicket.status === 'COMPLETED' && t.statusCompleted}
+                {activeTicket.status === 'NO_SHOW' && t.statusNoShow}
+              </div>
+            </div>
+
+            {/* Ticket Body */}
+            <div className="p-6 text-center space-y-4">
+              
+              <div>
+                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  {t.yourTicketNumber}
+                </p>
+                <div className={`text-5xl sm:text-6xl font-black font-mono tracking-tight my-2 ${
+                  activeTicket.status === 'CALLED'
+                    ? 'text-amber-600 dark:text-amber-400 scale-105 transition-transform'
+                    : 'text-slate-900 dark:text-white'
+                }`}>
+                  {activeTicket.ticket_number}
+                </div>
+                <p className="text-sm font-bold text-blue-600 dark:text-blue-400">
+                  {activeTicket.citizen_name}
+                </p>
+                <p className="text-xs text-slate-400 font-mono mt-0.5">
+                  MyKad: {activeTicket.ic_number}
+                </p>
+              </div>
+
+              {/* Called Highlight Alert */}
+              {activeTicket.status === 'CALLED' && (
+                <div className="p-4 bg-amber-50 dark:bg-amber-950/60 rounded-2xl border-2 border-amber-500 shadow-lg text-left">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-12 h-12 rounded-xl bg-amber-500 text-white flex items-center justify-center font-black text-xl">
+                      {activeTicket.counter_number || 1}
+                    </div>
+                    <div>
+                      <h4 className="text-base font-extrabold text-amber-900 dark:text-amber-200">
+                        {t.statusCalled}
+                      </h4>
+                      <p className="text-xs text-amber-700 dark:text-amber-300 font-medium">
+                        Sila segera ke <span className="font-bold underline">Kaunter {activeTicket.counter_number || 1}</span> sekarang. Pegawai sedang menunggu anda.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Waiting Information (People Ahead & Estimated Wait) */}
+              {activeTicket.status === 'WAITING' && (
+                <div className="grid grid-cols-2 gap-3 py-3 border-y border-slate-100 dark:border-slate-800">
+                  <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl">
+                    <div className="flex items-center justify-center space-x-1.5 text-slate-500 dark:text-slate-400 mb-1">
+                      <Users className="w-4 h-4" />
+                      <span className="text-[11px] font-semibold">{t.peopleAhead}</span>
+                    </div>
+                    <div className="text-2xl font-black text-slate-900 dark:text-white">
+                      {activeTicket.peopleAhead ?? 1}
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl">
+                    <div className="flex items-center justify-center space-x-1.5 text-slate-500 dark:text-slate-400 mb-1">
+                      <Clock className="w-4 h-4" />
+                      <span className="text-[11px] font-semibold">{t.estimatedWait}</span>
+                    </div>
+                    <div className="text-2xl font-black text-blue-600 dark:text-blue-400">
+                      ~{activeTicket.estimated_wait_mins || 10} <span className="text-xs font-normal text-slate-500">{t.minutes}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Check-in Section (Arrival Safeguard 15-Minute) */}
+              {activeTicket.status === 'PENDING_CHECKIN' && (
+                <div className="bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/50 rounded-2xl p-4 text-left space-y-3">
+                  <div className="flex items-start space-x-3">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="text-xs font-bold text-amber-900 dark:text-amber-200 uppercase tracking-wide">
+                        {t.arrivalSafeguardTitle}
+                      </h4>
+                      <p className="text-xs text-amber-800/90 dark:text-amber-300 mt-1">
+                        {t.arrivalSafeguardDesc}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Countdown Warning */}
+                  <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-amber-200 dark:border-amber-900/60">
+                    <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">Masa Baki Sahkan Kehadiran:</span>
+                    <span className="text-base font-black font-mono text-red-600 dark:text-red-400">
+                      {formatTimer(timerSeconds)}
+                    </span>
+                  </div>
+
+                  {/* Verification Buttons */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    <button
+                      onClick={handleGpsCheckin}
+                      disabled={isCheckingIn}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center space-x-1.5 shadow-sm active:scale-95 transition disabled:opacity-50"
+                    >
+                      <MapPin className="w-4 h-4" />
+                      <span>{t.btnGpsCheckin}</span>
+                    </button>
+
+                    <button
+                      onClick={handleQrCheckin}
+                      disabled={isCheckingIn}
+                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center space-x-1.5 shadow-sm active:scale-95 transition disabled:opacity-50"
+                    >
+                      <QrCode className="w-4 h-4" />
+                      <span>{t.btnQrCheckin}</span>
+                    </button>
+                  </div>
+
+                  {checkinMessage && (
+                    <div className="p-2 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-xs rounded-lg font-medium text-center">
+                      {checkinMessage}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* QR Verification Visual Placeholder */}
+              <div className="py-2 flex flex-col items-center justify-center">
+                <div className="w-32 h-32 bg-slate-100 dark:bg-slate-800 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 flex flex-col items-center justify-center p-3 text-center">
+                  <QrCode className="w-16 h-16 text-slate-700 dark:text-slate-300" />
+                  <span className="text-[10px] text-slate-400 font-mono mt-1">{activeTicket.ticket_number}</span>
+                </div>
+                <span className="text-[11px] text-slate-400 mt-2">
+                  Imbas di kiosk pintu masuk atau tunjukkan kepada pegawai kaunter
+                </span>
+              </div>
+
+            </div>
+
+            {/* Footer Actions */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <button
+                onClick={() => onCancelTicket(activeTicket.id)}
+                className="text-xs font-semibold text-rose-600 dark:text-rose-400 hover:underline flex items-center space-x-1"
+              >
+                <XCircle className="w-3.5 h-3.5" />
+                <span>{t.btnCancelTicket}</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTicket(null)}
+                className="text-xs font-semibold text-slate-600 dark:text-slate-400 hover:underline flex items-center space-x-1"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Ambil Tiket Lain</span>
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
