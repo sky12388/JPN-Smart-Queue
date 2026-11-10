@@ -15,11 +15,18 @@ import {
 
 export default function TvView({ 
   lang, 
+  branches = [],
+  selectedBranch = 'PUTRAJAYA',
   activeTickets, 
   lastCalledTicket, 
   counters 
 }) {
   const t = translations[lang];
+
+  const currentBranchObj = branches.find(b => b.id === selectedBranch) || {
+    name_ms: 'JPN Ibu Pejabat Putrajaya',
+    name_en: 'JPN Headquarters Putrajaya'
+  };
 
   const [currentTime, setCurrentTime] = useState(new Date());
   const [audioEnabled, setAudioEnabled] = useState(true);
@@ -81,7 +88,7 @@ export default function TvView({
               <span>{t.tvDisplayTitle}</span>
             </h1>
             <p className="text-xs sm:text-sm text-slate-400 font-medium">
-              Jabatan Pendaftaran Negara • Cawangan Putrajaya
+              {lang === 'ms' ? currentBranchObj.name_ms : currentBranchObj.name_en}
             </p>
           </div>
         </div>

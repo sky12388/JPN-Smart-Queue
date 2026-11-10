@@ -28,6 +28,11 @@ export default function App() {
     return ['citizen', 'kiosk', 'counter', 'tv', 'supervisor'].includes(hash) ? hash : 'citizen';
   });
 
+  // Selected Branch State
+  const [selectedBranch, setSelectedBranch] = useState(() => {
+    return localStorage.getItem('smartqueue_branch') || 'PUTRAJAYA';
+  });
+
   // App Data State
   const [isConnected, setIsConnected] = useState(false);
   const [branches, setBranches] = useState([]);
@@ -59,6 +64,14 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('smartqueue_lang', lang);
   }, [lang]);
+
+  // Persist Branch
+  useEffect(() => {
+    localStorage.setItem('smartqueue_branch', selectedBranch);
+    if (socket.connected) {
+      socket.emit('join_branch', selectedBranch);
+    }
+  }, [selectedBranch]);
 
   // Persist Active Ticket
   useEffect(() => {
@@ -278,6 +291,9 @@ export default function App() {
         isDark={isDark}
         setIsDark={setIsDark}
         isConnected={isConnected}
+        branches={branches}
+        selectedBranch={selectedBranch}
+        setSelectedBranch={setSelectedBranch}
       />
 
       {/* Main Content Area */}
@@ -289,6 +305,8 @@ export default function App() {
             categories={categories}
             activeTicket={activeTicket}
             setActiveTicket={setActiveTicket}
+            selectedBranch={selectedBranch}
+            setSelectedBranch={setSelectedBranch}
             onIssueTicket={handleIssueTicket}
             onCheckinTicket={handleCheckinTicket}
             onCancelTicket={handleCancelTicket}
@@ -298,6 +316,9 @@ export default function App() {
         {activeView === 'kiosk' && (
           <KioskView
             lang={lang}
+            branches={branches}
+            selectedBranch={selectedBranch}
+            setSelectedBranch={setSelectedBranch}
             waitingTickets={waitingTickets}
             onCheckinTicket={handleCheckinTicket}
           />
@@ -306,8 +327,10 @@ export default function App() {
         {activeView === 'counter' && (
           <CounterView
             lang={lang}
-            counters={counters}
-            waitingTickets={waitingTickets}
+            branches={branches}
+            selectedBranch={selectedBranch}
+            counters={counters.filter(c => c.branch_id === selectedBranch)}
+            waitingTickets={waitingTickets.filter(t => t.branch_id === selectedBranch)}
             onCallNext={handleCallNext}
             onRecall={handleRecall}
             onStartServe={handleStartServe}
@@ -319,17 +342,21 @@ export default function App() {
         {activeView === 'tv' && (
           <TvView
             lang={lang}
-            activeTickets={activeTickets}
+            branches={branches}
+            selectedBranch={selectedBranch}
+            activeTickets={activeTickets.filter(t => t.branch_id === selectedBranch)}
             lastCalledTicket={lastCalledTicket}
-            counters={counters}
+            counters={counters.filter(c => c.branch_id === selectedBranch)}
           />
         )}
 
         {activeView === 'supervisor' && (
           <SupervisorView
             lang={lang}
+            branches={branches}
+            selectedBranch={selectedBranch}
             stats={stats}
-            counters={counters}
+            counters={counters.filter(c => c.branch_id === selectedBranch)}
             onSeedDemo={handleSeedDemo}
             onResetQueue={handleResetQueue}
           />

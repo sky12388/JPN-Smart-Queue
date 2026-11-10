@@ -20,9 +20,14 @@ export default function Navbar({
   setLang, 
   isDark, 
   setIsDark, 
-  isConnected 
+  isConnected,
+  branches = [],
+  selectedBranch,
+  setSelectedBranch
 }) {
   const t = translations[lang];
+
+  const currentBranchObj = branches.find(b => b.id === selectedBranch) || branches[0];
 
   return (
     <header className="sticky top-0 z-50 backdrop-blur-md bg-white/90 dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800 transition-colors shadow-sm">
@@ -43,9 +48,22 @@ export default function Navbar({
                   PoC Pilot
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium hidden sm:block">
-                {t.agency} • Putrajaya
-              </p>
+              
+              {/* Branch Quick Switcher */}
+              <div className="flex items-center space-x-1 mt-0.5">
+                <Building2 className="w-3 h-3 text-amber-500" />
+                <select
+                  value={selectedBranch}
+                  onChange={(e) => setSelectedBranch(e.target.value)}
+                  className="bg-transparent text-[11px] font-semibold text-slate-600 dark:text-slate-300 border-none outline-none cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 transition pr-2"
+                >
+                  {branches.map((b) => (
+                    <option key={b.id} value={b.id} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs">
+                      {lang === 'ms' ? b.name_ms : b.name_en}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 

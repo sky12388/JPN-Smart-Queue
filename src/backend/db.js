@@ -112,7 +112,14 @@ export async function initDatabase() {
     await dbRun(`
       INSERT INTO branches (id, name_ms, name_en, address, lat, lng, radius_meters) VALUES
       ('PUTRAJAYA', 'JPN Ibu Pejabat Putrajaya', 'JPN Headquarters Putrajaya', 'No 20, Persiaran Perdana, Presint 2, 62551 Putrajaya', 2.9234, 101.6888, 200),
-      ('UTC_SHAH_ALAM', 'JPN UTC Selangor (Shah Alam)', 'JPN UTC Selangor (Shah Alam)', 'Tingkat 2, Plaza Angsana, Seksyen 14, 40000 Shah Alam', 3.0707, 101.5234, 150)
+      ('UTC_SHAH_ALAM', 'JPN UTC Selangor (Shah Alam)', 'JPN UTC Selangor (Shah Alam)', 'Tingkat 2, Plaza Angsana, Seksyen 14, 40000 Shah Alam', 3.0707, 101.5234, 150),
+      ('HULU_SELANGOR', 'JPN Daerah Hulu Selangor (Kuala Kubu Bharu)', 'JPN Hulu Selangor District (Kuala Kubu Bharu)', 'D/A Pejabat Daerah, Hulu Selangor, 44000 Kuala Kubu Bharu', 3.5647, 101.6582, 150)
+    `);
+  } else {
+    // Ensure Hulu Selangor exists in already-seeded DBs
+    await dbRun(`
+      INSERT OR IGNORE INTO branches (id, name_ms, name_en, address, lat, lng, radius_meters) VALUES
+      ('HULU_SELANGOR', 'JPN Daerah Hulu Selangor (Kuala Kubu Bharu)', 'JPN Hulu Selangor District (Kuala Kubu Bharu)', 'D/A Pejabat Daerah, Hulu Selangor, 44000 Kuala Kubu Bharu', 3.5647, 101.6582, 150)
     `);
   }
 
@@ -137,6 +144,18 @@ export async function initDatabase() {
       (4, 'PUTRAJAYA', 'Encik Tan Wei Lun', 'ONLINE', '["KELAHIRAN","KAHWIN"]'),
       (5, 'PUTRAJAYA', 'Puan Kavitha Raj', 'ONLINE', '["KAHWIN"]'),
       (6, 'PUTRAJAYA', 'Encik Muhammad Fikri', 'ONLINE', '["KHAS","MYKAD"]')
+    `);
+  }
+
+  // Ensure Hulu Selangor has counters
+  const hsCounterCount = await dbGet("SELECT COUNT(*) as count FROM counters WHERE branch_id = 'HULU_SELANGOR'");
+  if (hsCounterCount.count === 0) {
+    await dbRun(`
+      INSERT INTO counters (number, branch_id, officer_name, status, assigned_categories) VALUES
+      (1, 'HULU_SELANGOR', 'Encik Azman bin Hashim', 'ONLINE', '["MYKAD","KHAS"]'),
+      (2, 'HULU_SELANGOR', 'Puan Rosnah binti Mat', 'ONLINE', '["MYKAD","KELAHIRAN"]'),
+      (3, 'HULU_SELANGOR', 'Encik Lee Kok Leong', 'ONLINE', '["KELAHIRAN","KAHWIN"]'),
+      (4, 'HULU_SELANGOR', 'Puan Zainab binti Sulaiman', 'ONLINE', '["KHAS","MYKAD"]')
     `);
   }
 
