@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { translations } from '../i18n';
-import { playScanBeep } from '../audio';
+import { playScanBeep, startPhoneAlarm, stopPhoneAlarm } from '../audio';
 import confetti from 'canvas-confetti';
 import { 
   QrCode, 
@@ -17,7 +17,11 @@ import {
   Camera,
   X,
   ScanLine,
-  Sparkles
+  Sparkles,
+  Bell,
+  BellOff,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 
 export default function CitizenView({ 
@@ -47,6 +51,64 @@ export default function CitizenView({
 
   // QR Scanner Modal State
   const [showQrModal, setShowQrModal] = useState(false);
+
+  // Phone Alarm & Notification State
+  const [alarmSounding, setAlarmSounding] = useState(false);
+  const [notifPermission, setNotifPermission] = useState(() => {
+    return 'Notification' in window ? Notification.permission : 'denied';
+  });
+
+  // Request browser notification permission
+  const handleEnableNotification = async () => {
+    if ('Notification' in window) {
+      const perm = await Notification.requestPermission();
+      setNotifPermission(perm);
+      if (perm === 'granted') {
+        playScanBeep();
+      }
+    }
+  };
+
+  // Trigger Phone Alarm & Vibration when status is CALLED
+  useEffect(() => {
+    if (activeTicket && activeTicket.status === 'CALLED') {
+      setAlarmSounding(true);
+      startPhoneAlarm();
+
+      // Vibrate mobile device (repeating pulse)
+      if ('vibrate' in navigator) {
+        navigator.vibrate([500, 250, 500, 250, 800]);
+      }
+
+      // Fire OS Lockscreen Notification if granted
+      if ('Notification' in window && Notification.permission === 'granted') {
+        try {
+          new Notification(`🚨 GILIRAN ANDA DIPANGGIL: KAUNTER ${activeTicket.counter_number || 1}`, {
+            body: `Nombor ${activeTicket.ticket_number} (${activeTicket.citizen_name}). Sila ke Kaunter sekarang!`,
+            vibrate: [500, 250, 500],
+            requireInteraction: true
+          });
+        } catch (e) {
+          console.warn('Notification error:', e);
+        }
+      }
+    } else {
+      setAlarmSounding(false);
+      stopPhoneAlarm();
+    }
+
+    return () => {
+      stopPhoneAlarm();
+    };
+  }, [activeTicket?.status, activeTicket?.counter_number]);
+
+  const handleDismissAlarm = () => {
+    setAlarmSounding(false);
+    stopPhoneAlarm();
+    if ('vibrate' in navigator) {
+      navigator.vibrate(0);
+    }
+  };
 
   // Auto-format Malaysian MyKad / No. KP (YYMMDD-PB-###G)
   const handleIcChange = (e) => {
@@ -342,6 +404,27 @@ export default function CitizenView({
       ) : (
         /* Active Virtual Ticket Card */
         <div className="space-y-4">
+          
+          {/* Permission Prompt for Smartphone Alarm & Notification */}
+          {notifPermission !== 'granted' && (
+            <button
+              type="button"
+              onClick={handleEnableNotification}
+              className="w-full p-3.5 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 border border-amber-300 dark:border-amber-800 rounded-2xl flex items-center justify-between text-xs text-amber-900 dark:text-amber-200 active:scale-[0.99] transition shadow-sm"
+            >
+              <div className="flex items-center space-x-2.5">
+                <Bell className="w-4 h-4 text-amber-600 dark:text-amber-400 animate-bounce flex-shrink-0" />
+                <div className="text-left">
+                  <span className="font-bold block">Aktifkan Penggera Telefon</span>
+                  <span className="text-[10px] text-amber-700/80 dark:text-amber-400">Telefon akan berbunyi & bergetar semasa nombor dipanggil</span>
+                </div>
+              </div>
+              <span className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-black text-[11px] shadow-sm flex-shrink-0">
+                BENARKAN
+              </span>
+            </button>
+          )}
+
           <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
             
             {/* Top Status Header */}
@@ -388,22 +471,48 @@ export default function CitizenView({
                 </p>
               </div>
 
-              {/* Called Highlight Alert */}
+              {/* Called Highlight Alert & Loud Alarm Dismiss */}
               {activeTicket.status === 'CALLED' && (
-                <div className="p-4 bg-amber-50 dark:bg-amber-950/60 rounded-2xl border-2 border-amber-500 shadow-lg text-left">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-12 h-12 rounded-xl bg-amber-500 text-white flex items-center justify-center font-black text-xl">
+                <div className="p-5 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white rounded-3xl shadow-2xl border-4 border-amber-300 animate-pulse text-left space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Bell className="w-5 h-5 animate-spin" />
+                      <span className="text-[11px] font-black uppercase tracking-widest bg-black/30 px-3 py-1 rounded-full">
+                        PENGGERA GILIRAN BERBUNYI!
+                      </span>
+                    </div>
+                    {alarmSounding && (
+                      <span className="flex items-center space-x-1 text-xs font-bold bg-white/20 px-2.5 py-1 rounded-xl">
+                        <Volume2 className="w-4 h-4 animate-bounce" />
+                        <span>BUNYI AKTIF</span>
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center space-x-3.5">
+                    <div className="w-14 h-14 rounded-2xl bg-slate-950 text-amber-400 flex items-center justify-center font-black text-2xl shadow-lg border border-amber-400 flex-shrink-0">
                       {activeTicket.counter_number || 1}
                     </div>
                     <div>
-                      <h4 className="text-base font-extrabold text-amber-900 dark:text-amber-200">
-                        {t.statusCalled}
+                      <h4 className="text-base font-black">
+                        SILA KE KAUNTER {activeTicket.counter_number || 1} SEKARANG!
                       </h4>
-                      <p className="text-xs text-amber-700 dark:text-amber-300 font-medium">
-                        Sila segera ke <span className="font-bold underline">Kaunter {activeTicket.counter_number || 1}</span> sekarang. Pegawai sedang menunggu anda.
+                      <p className="text-xs text-white/90 font-medium mt-0.5">
+                        Pegawai sedang menunggu anda di kaunter. Sila hadir segera.
                       </p>
                     </div>
                   </div>
+
+                  {alarmSounding && (
+                    <button
+                      type="button"
+                      onClick={handleDismissAlarm}
+                      className="w-full bg-slate-950 hover:bg-black text-amber-300 font-black py-3.5 px-4 rounded-2xl text-xs sm:text-sm flex items-center justify-center space-x-2 shadow-xl active:scale-95 transition border border-amber-400"
+                    >
+                      <VolumeX className="w-4 h-4 text-rose-400" />
+                      <span>HENTIKAN PENGGERA (SAYA SEDANG MENUJU KE KAUNTER)</span>
+                    </button>
+                  )}
                 </div>
               )}
 
