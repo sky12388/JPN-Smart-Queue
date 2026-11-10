@@ -40,7 +40,10 @@ export default function CitizenView({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [checkinMessage, setCheckinMessage] = useState(null);
-  const [timerSeconds, setTimerSeconds] = useState(900); // 15 mins countdown
+  
+  // Live Wait Countdown State (for WAITING tickets) & Check-in Safeguard State
+  const [waitCountdownSeconds, setWaitCountdownSeconds] = useState(600); // 10 mins default
+  const [checkinTimerSeconds, setCheckinTimerSeconds] = useState(900); // 15 mins safeguard
 
   // QR Scanner Modal State
   const [showQrModal, setShowQrModal] = useState(false);
@@ -70,16 +73,45 @@ export default function CitizenView({
     }
   };
 
-  // Countdown timer for 15-min arrival check-in safeguard
+  // Live countdown intervals: Runs live for both WAITING and PENDING_CHECKIN
   useEffect(() => {
-    let interval = null;
-    if (activeTicket && activeTicket.status === 'PENDING_CHECKIN') {
-      interval = setInterval(() => {
-        setTimerSeconds(prev => (prev > 0 ? prev - 1 : 0));
-      }, 1000);
+    if (!activeTicket) return;
+
+    // 1. Calculate remaining wait time for WAITING status
+    if (activeTicket.status === 'WAITING') {
+      const estimatedSecs = (activeTicket.estimated_wait_mins || 10) * 60;
+      let elapsedSecs = 0;
+      if (activeTicket.checked_in_at) {
+        const t = new Date(activeTicket.checked_in_at).getTime();
+        if (!isNaN(t)) {
+          elapsedSecs = Math.max(0, Math.floor((Date.now() - t) / 1000));
+        }
+      }
+      const remaining = Math.max(0, estimatedSecs - elapsedSecs);
+      setWaitCountdownSeconds(remaining > 0 ? remaining : estimatedSecs);
     }
+
+    // 2. Calculate remaining check-in time for PENDING_CHECKIN status
+    if (activeTicket.status === 'PENDING_CHECKIN') {
+      let elapsedSecs = 0;
+      if (activeTicket.created_at) {
+        const t = new Date(activeTicket.created_at).getTime();
+        if (!isNaN(t)) {
+          elapsedSecs = Math.max(0, Math.floor((Date.now() - t) / 1000));
+        }
+      }
+      const remaining = Math.max(0, 900 - elapsedSecs);
+      setCheckinTimerSeconds(remaining > 0 ? remaining : 900);
+    }
+
+    // Second-by-second countdown ticker
+    const interval = setInterval(() => {
+      setWaitCountdownSeconds(prev => (prev > 0 ? prev - 1 : 0));
+      setCheckinTimerSeconds(prev => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+
     return () => clearInterval(interval);
-  }, [activeTicket]);
+  }, [activeTicket?.status, activeTicket?.estimated_wait_mins, activeTicket?.checked_in_at, activeTicket?.created_at]);
 
   const formatTimer = (seconds) => {
     const mins = Math.floor(seconds / 60);
@@ -375,7 +407,7 @@ export default function CitizenView({
                 </div>
               )}
 
-              {/* Waiting Information (People Ahead & Estimated Wait) */}
+              {/* Waiting Information (People Ahead & Estimated Wait Live Countdown) */}
               {activeTicket.status === 'WAITING' && (
                 <div className="grid grid-cols-2 gap-3 py-3 border-y border-slate-100 dark:border-slate-800">
                   <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl">
@@ -386,16 +418,32 @@ export default function CitizenView({
                     <div className="text-2xl font-black text-slate-900 dark:text-white">
                       {activeTicket.peopleAhead ?? 1}
                     </div>
+                    <span className="text-[10px] text-slate-400">orang di hadapan</span>
                   </div>
 
-                  <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl">
+                  <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl relative overflow-hidden">
                     <div className="flex items-center justify-center space-x-1.5 text-slate-500 dark:text-slate-400 mb-1">
-                      <Clock className="w-4 h-4" />
+                      <Clock className="w-4 h-4 text-blue-500 animate-pulse" />
                       <span className="text-[11px] font-semibold">{t.estimatedWait}</span>
                     </div>
-                    <div className="text-2xl font-black text-blue-600 dark:text-blue-400">
-                      ~{activeTicket.estimated_wait_mins || 10} <span className="text-xs font-normal text-slate-500">{t.minutes}</span>
-                    </div>
+                    {waitCountdownSeconds > 0 ? (
+                      <div>
+                        <div className="text-2xl font-black font-mono tracking-wider text-blue-600 dark:text-blue-400">
+                          {formatTimer(waitCountdownSeconds)}
+                        </div>
+                        <span className="text-[10px] text-slate-400 flex items-center justify-center space-x-1 mt-0.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                          <span>Kiraan Masa Nyata</span>
+                        </span>
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="text-xl font-black text-emerald-600 dark:text-emerald-400 animate-pulse">
+                          Bersedia!
+                        </div>
+                        <span className="text-[10px] text-slate-400">Giliran bila-bila masa</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -419,7 +467,7 @@ export default function CitizenView({
                   <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-amber-200 dark:border-amber-900/60">
                     <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">Masa Baki Sahkan Kehadiran:</span>
                     <span className="text-base font-black font-mono text-red-600 dark:text-red-400">
-                      {formatTimer(timerSeconds)}
+                      {formatTimer(checkinTimerSeconds)}
                     </span>
                   </div>
 
