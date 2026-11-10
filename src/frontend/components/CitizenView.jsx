@@ -45,6 +45,31 @@ export default function CitizenView({
   // QR Scanner Modal State
   const [showQrModal, setShowQrModal] = useState(false);
 
+  // Auto-format Malaysian MyKad / No. KP (YYMMDD-PB-###G)
+  const handleIcChange = (e) => {
+    const raw = e.target.value;
+    // Strip non-digits and limit to 12 numeric digits
+    const digits = raw.replace(/\D/g, '').slice(0, 12);
+    
+    let formatted = digits;
+    if (digits.length > 8) {
+      formatted = `${digits.slice(0, 6)}-${digits.slice(6, 8)}-${digits.slice(8)}`;
+    } else if (digits.length > 6) {
+      formatted = `${digits.slice(0, 6)}-${digits.slice(6)}`;
+    }
+    setIcNumber(formatted);
+  };
+
+  // Auto-format Mobile Phone (01X-XXXXXXX)
+  const handlePhoneChange = (e) => {
+    const digits = e.target.value.replace(/\D/g, '').slice(0, 11);
+    if (digits.length > 3) {
+      setPhone(`${digits.slice(0, 3)}-${digits.slice(3)}`);
+    } else {
+      setPhone(digits);
+    }
+  };
+
   // Countdown timer for 15-min arrival check-in safeguard
   useEffect(() => {
     let interval = null;
@@ -231,10 +256,12 @@ export default function CitizenView({
                 <input
                   type="text"
                   required
+                  inputMode="numeric"
+                  maxLength={14}
                   value={icNumber}
-                  onChange={(e) => setIcNumber(e.target.value)}
-                  placeholder={t.icPlaceholder}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm font-mono text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                  onChange={handleIcChange}
+                  placeholder="Contoh: 900101-14-5566"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm font-mono tracking-wider font-semibold text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
                 />
               </div>
 
@@ -243,11 +270,13 @@ export default function CitizenView({
                   {t.phoneNumber}
                 </label>
                 <input
-                  type="text"
+                  type="tel"
+                  inputMode="tel"
+                  maxLength={12}
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={handlePhoneChange}
                   placeholder={t.phonePlaceholder}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm font-mono text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm font-mono tracking-wider font-semibold text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
                 />
               </div>
             </div>
