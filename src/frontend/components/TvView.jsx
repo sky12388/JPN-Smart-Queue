@@ -32,9 +32,43 @@ export default function TvView({
 
   const [currentTime, setCurrentTime] = useState(new Date());
   const [audioEnabled, setAudioEnabled] = useState(true);
-  const [tvStarted, setTvStarted] = useState(false);
-  const [selectedZone, setSelectedZone] = useState('ALL'); // ALL, MYKAD, KELAHIRAN, KAHWIN, KHAS
+
+  // Check URL params (?autostart=1&zone=MYKAD) or saved localStorage for zero-touch Android TV boot
+  const [tvStarted, setTvStarted] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('autostart') === '1') return true;
+    return localStorage.getItem('smartqueue_tv_autostart') === 'true';
+  });
+
+  const [selectedZone, setSelectedZone] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlZone = params.get('zone')?.toUpperCase();
+    if (urlZone && ['ALL', 'MYKAD', 'KELAHIRAN', 'KAHWIN', 'KHAS'].includes(urlZone)) {
+      return urlZone;
+    }
+    return localStorage.getItem('smartqueue_tv_zone') || 'ALL';
+  });
+
   const [isFlashing, setIsFlashing] = useState(false);
+
+  // Save TV Zone choice to localStorage so TV remembers its zone after power off/on
+  useEffect(() => {
+    localStorage.setItem('smartqueue_tv_zone', selectedZone);
+  }, [selectedZone]);
+
+  // Also unlock audio on any remote control key press (OK/Enter button on Android TV remote)
+  useEffect(() => {
+    const handleRemoteKey = () => {
+      if (!tvStarted) {
+        unlockAudio();
+        setAudioEnabled(true);
+        setTvStarted(true);
+        localStorage.setItem('smartqueue_tv_autostart', 'true');
+      }
+    };
+    window.addEventListener('keydown', handleRemoteKey);
+    return () => window.removeEventListener('keydown', handleRemoteKey);
+  }, [tvStarted]);
 
   // Clock ticker
   useEffect(() => {
@@ -86,6 +120,7 @@ export default function TvView({
     unlockAudio();
     setAudioEnabled(true);
     setTvStarted(true);
+    localStorage.setItem('smartqueue_tv_autostart', 'true');
   };
 
   // Test sound button

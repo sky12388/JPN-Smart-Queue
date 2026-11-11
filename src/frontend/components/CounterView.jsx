@@ -28,9 +28,20 @@ export default function CounterView({
 }) {
   const t = translations[lang];
 
-  const [selectedCounterNum, setSelectedCounterNum] = useState(1);
+  const [selectedCounterNum, setSelectedCounterNum] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlCounter = parseInt(params.get('counter'), 10);
+    if (!isNaN(urlCounter) && urlCounter >= 1 && urlCounter <= 20) return urlCounter;
+    const saved = parseInt(localStorage.getItem('smartqueue_counter_num'), 10);
+    return !isNaN(saved) ? saved : 1;
+  });
   const [actionLoading, setActionLoading] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState(null);
+
+  const handleSelectCounter = (num) => {
+    setSelectedCounterNum(num);
+    localStorage.setItem('smartqueue_counter_num', num.toString());
+  };
 
   const counterNumbers = counters.length > 0
     ? counters.map(c => c.number)
@@ -75,7 +86,7 @@ export default function CounterView({
           {counterNumbers.map((num) => (
             <button
               key={num}
-              onClick={() => setSelectedCounterNum(num)}
+              onClick={() => handleSelectCounter(num)}
               className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center space-x-1 ${
                 selectedCounterNum === num
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30 scale-105'
