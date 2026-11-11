@@ -17,8 +17,9 @@ import {
 
 export default function CounterView({
   lang,
-  counters,
-  waitingTickets,
+  counters = [],
+  activeTickets = [],
+  waitingTickets = [],
   onCallNext,
   onRecall,
   onStartServe,
@@ -31,14 +32,19 @@ export default function CounterView({
   const [actionLoading, setActionLoading] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState(null);
 
+  const counterNumbers = counters.length > 0
+    ? counters.map(c => c.number)
+    : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
   const activeCounter = counters.find(c => c.number === selectedCounterNum) || counters[0] || {
-    number: 1,
-    officer_name: 'Puan Siti Norhaliza',
+    number: selectedCounterNum,
+    officer_name: 'Pegawai Bertugas JPN',
     status: 'ONLINE'
   };
 
   // Find currently serving ticket for this counter if any
-  const currentServingTicket = waitingTickets?.find(
+  const allPool = [...(activeTickets || []), ...(waitingTickets || [])];
+  const currentServingTicket = allPool.find(
     t => t.id === activeCounter.current_ticket_id || (t.counter_number === activeCounter.number && ['CALLED', 'SERVING'].includes(t.status))
   );
 
@@ -61,23 +67,22 @@ export default function CounterView({
       {/* Top Bar: Counter Selection & Officer Info */}
       <div className="bg-white dark:bg-slate-900 rounded-3xl p-4 sm:p-6 shadow-lg border border-slate-200 dark:border-slate-800 mb-6 flex flex-col md:flex-row items-center justify-between gap-4">
         
-        {/* Left: Counter Number Pill Selector */}
-        <div className="flex items-center space-x-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0">
-          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mr-2 hidden sm:inline">
+        {/* Left: Counter Number Pill Selector (1 - 10 Counters) */}
+        <div className="flex items-center flex-wrap gap-1.5 w-full md:w-auto">
+          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mr-1 hidden sm:inline">
             {t.selectCounter}:
           </span>
-          {[1, 2, 3, 4, 5, 6].map((num) => (
+          {counterNumbers.map((num) => (
             <button
               key={num}
               onClick={() => setSelectedCounterNum(num)}
-              className={`px-4 py-2 rounded-2xl text-xs sm:text-sm font-black transition-all flex items-center space-x-1.5 ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center space-x-1 ${
                 selectedCounterNum === num
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30 scale-105'
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
               }`}
             >
-              <span>{t.counter}</span>
-              <span>{num}</span>
+              <span>K{num}</span>
             </button>
           ))}
         </div>

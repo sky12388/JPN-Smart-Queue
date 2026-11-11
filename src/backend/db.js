@@ -134,29 +134,33 @@ export async function initDatabase() {
     `);
   }
 
-  const counterCount = await dbGet('SELECT COUNT(*) as count FROM counters');
-  if (counterCount.count === 0) {
-    await dbRun(`
-      INSERT INTO counters (number, branch_id, officer_name, status, assigned_categories) VALUES
-      (1, 'PUTRAJAYA', 'Puan Siti Norhaliza', 'ONLINE', '["MYKAD","KHAS"]'),
-      (2, 'PUTRAJAYA', 'Encik Ahmad Razali', 'ONLINE', '["MYKAD"]'),
-      (3, 'PUTRAJAYA', 'Puan Nurul Huda', 'ONLINE', '["KELAHIRAN"]'),
-      (4, 'PUTRAJAYA', 'Encik Tan Wei Lun', 'ONLINE', '["KELAHIRAN","KAHWIN"]'),
-      (5, 'PUTRAJAYA', 'Puan Kavitha Raj', 'ONLINE', '["KAHWIN"]'),
-      (6, 'PUTRAJAYA', 'Encik Muhammad Fikri', 'ONLINE', '["KHAS","MYKAD"]')
-    `);
-  }
+  // Ensure all branches have 10 counters (Kaunter 1 - Kaunter 10)
+  const defaultOfficers = [
+    { num: 1, name: 'Puan Siti Norhaliza', cats: '["MYKAD","KHAS"]' },
+    { num: 2, name: 'Encik Ahmad Razali', cats: '["MYKAD"]' },
+    { num: 3, name: 'Cik Farah Nadia', cats: '["MYKAD"]' },
+    { num: 4, name: 'Encik Hafizuddin', cats: '["MYKAD"]' },
+    { num: 5, name: 'Puan Nurul Huda', cats: '["KELAHIRAN"]' },
+    { num: 6, name: 'Encik Tan Wei Lun', cats: '["KELAHIRAN","KAHWIN"]' },
+    { num: 7, name: 'Puan Kavitha Raj', cats: '["KAHWIN"]' },
+    { num: 8, name: 'Encik Rajesh Kumar', cats: '["KAHWIN","KELAHIRAN"]' },
+    { num: 9, name: 'Puan Zainab binti Sulaiman', cats: '["KHAS","MYKAD"]' },
+    { num: 10, name: 'Encik Muhammad Fikri', cats: '["KHAS","MYKAD","KELAHIRAN"]' }
+  ];
 
-  // Ensure Hulu Selangor has counters
-  const hsCounterCount = await dbGet("SELECT COUNT(*) as count FROM counters WHERE branch_id = 'HULU_SELANGOR'");
-  if (hsCounterCount.count === 0) {
-    await dbRun(`
-      INSERT INTO counters (number, branch_id, officer_name, status, assigned_categories) VALUES
-      (1, 'HULU_SELANGOR', 'Encik Azman bin Hashim', 'ONLINE', '["MYKAD","KHAS"]'),
-      (2, 'HULU_SELANGOR', 'Puan Rosnah binti Mat', 'ONLINE', '["MYKAD","KELAHIRAN"]'),
-      (3, 'HULU_SELANGOR', 'Encik Lee Kok Leong', 'ONLINE', '["KELAHIRAN","KAHWIN"]'),
-      (4, 'HULU_SELANGOR', 'Puan Zainab binti Sulaiman', 'ONLINE', '["KHAS","MYKAD"]')
-    `);
+  for (const branchId of ['PUTRAJAYA', 'UTC_SHAH_ALAM', 'HULU_SELANGOR']) {
+    for (const off of defaultOfficers) {
+      const exists = await dbGet(
+        'SELECT id FROM counters WHERE branch_id = ? AND number = ?',
+        [branchId, off.num]
+      );
+      if (!exists) {
+        await dbRun(
+          `INSERT INTO counters (number, branch_id, officer_name, status, assigned_categories) VALUES (?, ?, ?, 'ONLINE', ?)`,
+          [off.num, branchId, off.name, off.cats]
+        );
+      }
+    }
   }
 
   console.log('✓ SQLite Database initialized successfully with default seeds.');

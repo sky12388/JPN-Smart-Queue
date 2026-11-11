@@ -52,6 +52,32 @@ export default function CitizenView({
   // QR Scanner Modal State
   const [showQrModal, setShowQrModal] = useState(false);
 
+  // Ticket Lookup State (Quno-style "Already have a number?")
+  const [lookupQuery, setLookupQuery] = useState('');
+  const [lookupError, setLookupError] = useState(null);
+
+  const handleFindTicket = async (e) => {
+    e.preventDefault();
+    if (!lookupQuery.trim()) return;
+    setLookupError(null);
+    try {
+      const res = await fetch('/api/tickets/find', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: lookupQuery.trim(), branch_id: selectedBranch })
+      });
+      const data = await res.json();
+      if (data.success && data.ticket) {
+        playScanBeep();
+        setActiveTicket(data.ticket);
+      } else {
+        setLookupError(data.error || 'Tiket tidak dijumpai.');
+      }
+    } catch (err) {
+      setLookupError('Ralat mencari tiket.');
+    }
+  };
+
   // Phone Alarm & Notification State
   const [alarmSounding, setAlarmSounding] = useState(false);
   const [notifPermission, setNotifPermission] = useState(() => {
@@ -400,6 +426,41 @@ export default function CitizenView({
               )}
             </button>
           </form>
+
+          {/* Quno-style "Already have a number?" Lookup */}
+          <div className="px-6 pb-6 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <details className="group bg-slate-50 dark:bg-slate-800/60 rounded-2xl p-3.5 border border-slate-200/80 dark:border-slate-700/60">
+              <summary className="text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer flex items-center justify-between">
+                <span>🎫 {lang === 'ms' ? 'Sudah ada nombor tiket? Jejak di sini' : 'Already have a ticket number? Track here'}</span>
+                <span className="text-blue-600 dark:text-blue-400 text-[11px] group-open:rotate-180 transition-transform">▼</span>
+              </summary>
+              <form onSubmit={handleFindTicket} className="mt-3 space-y-2">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {lang === 'ms'
+                    ? 'Masukkan No. Giliran (cth: A-1001) atau No. MyKad anda untuk memaparkan semula tiket:'
+                    : 'Enter your Ticket No. (e.g. A-1001) or MyKad number to restore your ticket:'}
+                </p>
+                <div className="flex space-x-2">
+                  <input
+                    type="text"
+                    value={lookupQuery}
+                    onChange={(e) => setLookupQuery(e.target.value)}
+                    placeholder="Contoh: A-1001 atau 940512-10-5432"
+                    className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    type="submit"
+                    className="bg-slate-900 dark:bg-blue-600 hover:bg-slate-800 text-white font-bold px-4 py-2 rounded-xl text-xs"
+                  >
+                    {lang === 'ms' ? 'Cari' : 'Find'}
+                  </button>
+                </div>
+                {lookupError && (
+                  <p className="text-[11px] text-rose-600 dark:text-rose-400 font-semibold">{lookupError}</p>
+                )}
+              </form>
+            </details>
+          </div>
         </div>
       ) : (
         /* Active Virtual Ticket Card */

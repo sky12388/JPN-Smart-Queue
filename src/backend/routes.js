@@ -43,6 +43,7 @@ export function createRouter(io) {
     // Calculate paper saved: each ticket saves approx 10cm thermal paper (~0.05 MYR + machine upkeep)
     const paperSavedMeters = (totalIssued * 0.12).toFixed(1);
     const costSavedMYR = (totalIssued * 0.35).toFixed(2);
+    const activeCounters = (await dbGet('SELECT COUNT(*) as count FROM counters WHERE branch_id = ?', [branchId]))?.count || 10;
 
     return {
       totalIssued,
@@ -53,7 +54,7 @@ export function createRouter(io) {
       noShowRate: `${noShowRate}%`,
       paperSavedMeters: `${paperSavedMeters} m`,
       costSavedMYR: `RM ${costSavedMYR}`,
-      activeCounters: 6
+      activeCounters
     };
   };
 
@@ -227,6 +228,36 @@ export function createRouter(io) {
         ticket,
         peopleAhead: ahead,
         currentServing: currentServing || null
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 4b. Find Existing Ticket by Ticket Number or MyKad (Quno-style lookup)
+  router.post('/tickets/find', async (req, res) => {
+    try {
+      const { query = '', branch_id = 'PUTRAJAYA' } = req.body;
+      const cleanQuery = query.trim();
+      if (!cleanQuery) {
+        return res.status(400).json({ error: 'Sila masukkan No. Giliran atau No. MyKad.' });
+      }
+
+      const ticket = await dbGet(
+        `SELECT * FROM tickets 
+         WHERE branch_id = ? 
+         AND (UPPER(ticket_number) = UPPER(?) OR ic_number = ?)
+         ORDER BY id DESC LIMIT 1`,
+        [branch_id, cleanQuery, cleanQuery]
+      );
+
+      if (!ticket) {
+        return res.status(404).json({ error: 'Tiada tiket dijumpai untuk maklumat tersebut.' });
+      }
+
+      res.json({
+        success: true,
+        ticket
       });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -429,6 +460,7 @@ export function createRouter(io) {
   // 11. Simulation demo helper (Seed test tickets)
   router.post('/simulation/seed', async (req, res) => {
     try {
+      const branchId = req.body?.branch_id || 'PUTRAJAYA';
       const sampleCitizens = [
         { name: 'Nurul Ain binti Yusof', ic: '940512-10-5432', cat: 'MYKAD', phone: '012-3456789' },
         { name: 'Muhammad Danial bin Azman', ic: '010324-14-6781', cat: 'KELAHIRAN', phone: '019-8765432' },
@@ -449,12 +481,12 @@ export function createRouter(io) {
         const ticket_number = `${cat.code}-${nextNum}`;
         await dbRun(
           `INSERT INTO tickets (branch_id, category_id, ticket_number, citizen_name, ic_number, phone, status, checked_in_at, checkin_method)
-           VALUES ('PUTRAJAYA', ?, ?, ?, ?, ?, 'WAITING', CURRENT_TIMESTAMP, 'GPS: Simulasi Hadir di Lobi')`,
-          [c.cat, ticket_number, c.name, c.ic, c.phone]
+           VALUES (?, ?, ?, ?, ?, ?, 'WAITING', CURRENT_TIMESTAMP, 'GPS: Simulasi Hadir di Lobi')`,
+          [branchId, c.cat, ticket_number, c.name, c.ic, c.phone]
         );
       }
 
-      await broadcastUpdate('PUTRAJAYA');
+      await broadcastUpdate(branchId);
       res.json({ success: true, message: '5 tiket simulasi berjaya ditambah ke senarai giliran.' });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -464,9 +496,10 @@ export function createRouter(io) {
   // 12. Simulation Reset
   router.post('/simulation/reset', async (req, res) => {
     try {
+      const branchId = req.body?.branch_id || 'PUTRAJAYA';
       await dbRun('DELETE FROM tickets');
       await dbRun("UPDATE counters SET current_ticket_id = NULL, status = 'ONLINE'");
-      await broadcastUpdate('PUTRAJAYA');
+      await broadcastUpdate(branchId);
       res.json({ success: true, message: 'Giliran hari ini telah diset semula kepada sifar.' });
     } catch (err) {
       res.status(500).json({ error: err.message });

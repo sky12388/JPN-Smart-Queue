@@ -224,7 +224,7 @@ export default function App() {
     const res = await fetch('/api/counter/call-next', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ counter_number: counterNumber })
+      body: JSON.stringify({ counter_number: counterNumber, branch_id: selectedBranch })
     });
     return res.json();
   };
@@ -233,7 +233,7 @@ export default function App() {
     const res = await fetch('/api/counter/recall', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ counter_number: counterNumber })
+      body: JSON.stringify({ counter_number: counterNumber, branch_id: selectedBranch })
     });
     return res.json();
   };
@@ -242,7 +242,7 @@ export default function App() {
     const res = await fetch('/api/counter/start-serving', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ counter_number: counterNumber })
+      body: JSON.stringify({ counter_number: counterNumber, branch_id: selectedBranch })
     });
     return res.json();
   };
@@ -251,7 +251,7 @@ export default function App() {
     const res = await fetch('/api/counter/complete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ counter_number: counterNumber })
+      body: JSON.stringify({ counter_number: counterNumber, branch_id: selectedBranch })
     });
     return res.json();
   };
@@ -260,20 +260,28 @@ export default function App() {
     const res = await fetch('/api/counter/no-show', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ counter_number: counterNumber })
+      body: JSON.stringify({ counter_number: counterNumber, branch_id: selectedBranch })
     });
     return res.json();
   };
 
   // Actions for Demo Simulation
   const handleSeedDemo = async () => {
-    const res = await fetch('/api/simulation/seed', { method: 'POST' });
+    const res = await fetch('/api/simulation/seed', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ branch_id: selectedBranch })
+    });
     return res.json();
   };
 
   const handleResetQueue = async () => {
     if (confirm('Peringatan: Ini akan mengosongkan semua rekod giliran hari ini. Teruskan?')) {
-      const res = await fetch('/api/simulation/reset', { method: 'POST' });
+      const res = await fetch('/api/simulation/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branch_id: selectedBranch })
+      });
       setActiveTicket(null);
       return res.json();
     }
@@ -330,6 +338,7 @@ export default function App() {
             branches={branches}
             selectedBranch={selectedBranch}
             counters={counters.filter(c => c.branch_id === selectedBranch)}
+            activeTickets={activeTickets.filter(t => t.branch_id === selectedBranch)}
             waitingTickets={waitingTickets.filter(t => t.branch_id === selectedBranch)}
             onCallNext={handleCallNext}
             onRecall={handleRecall}
@@ -345,6 +354,7 @@ export default function App() {
             branches={branches}
             selectedBranch={selectedBranch}
             activeTickets={activeTickets.filter(t => t.branch_id === selectedBranch)}
+            waitingTickets={waitingTickets.filter(t => t.branch_id === selectedBranch)}
             lastCalledTicket={lastCalledTicket}
             counters={counters.filter(c => c.branch_id === selectedBranch)}
           />

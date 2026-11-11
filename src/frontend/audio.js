@@ -74,8 +74,19 @@ export function playChime() {
   }
 }
 
-// Speak the ticket call in BM or EN
-export function speakAnnouncement(ticketNumber, counterNumber, lang = 'ms') {
+// Unlock AudioContext & SpeechSynthesis on first user tap (for Smart TVs & Mobile)
+export function unlockAudio() {
+  try {
+    const ctx = getAudioContext();
+    if (ctx && ctx.state === 'suspended') {
+      ctx.resume();
+    }
+    playChime();
+  } catch (e) {}
+}
+
+// Speak the ticket call in BM or EN (repeats 2x by default like Quno.io)
+export function speakAnnouncement(ticketNumber, counterNumber, lang = 'ms', repeat = 2) {
   if (!('speechSynthesis' in window)) return;
 
   // Let the chime finish first before speaking
@@ -83,7 +94,7 @@ export function speakAnnouncement(ticketNumber, counterNumber, lang = 'ms') {
     try {
       window.speechSynthesis.cancel(); // Stop any pending speech
 
-      // Format ticket for natural speech: "A-1002" -> "A, satu, kosong, kosong, dua" in BM
+      // Format ticket for natural speech: "A-1002" -> "A, 1 0 0 2"
       let speechText = '';
       if (lang === 'ms') {
         const parts = ticketNumber.split('-');
@@ -97,21 +108,21 @@ export function speakAnnouncement(ticketNumber, counterNumber, lang = 'ms') {
         speechText = `Ticket ${prefix} ${digits}. Please proceed to Counter ${counterNumber}.`;
       }
 
-      const utterance = new SpeechSynthesisUtterance(speechText);
-      utterance.rate = 0.9; // Slightly slower for clarity
-      utterance.pitch = 1.0;
-      utterance.lang = lang === 'ms' ? 'ms-MY' : 'en-US';
-
-      // Pick Malay or standard voice if available
       const voices = window.speechSynthesis.getVoices();
       const preferredVoice = voices.find(v => 
         lang === 'ms' ? (v.lang.includes('ms') || v.lang.includes('id')) : (v.lang.includes('en-US') || v.lang.includes('en-GB'))
       );
-      if (preferredVoice) {
-        utterance.voice = preferredVoice;
-      }
 
-      window.speechSynthesis.speak(utterance);
+      for (let i = 0; i < repeat; i++) {
+        const utterance = new SpeechSynthesisUtterance(speechText);
+        utterance.rate = 0.9;
+        utterance.pitch = 1.0;
+        utterance.lang = lang === 'ms' ? 'ms-MY' : 'en-US';
+        if (preferredVoice) {
+          utterance.voice = preferredVoice;
+        }
+        window.speechSynthesis.speak(utterance);
+      }
     } catch (e) {
       console.warn('TTS error:', e);
     }

@@ -1,25 +1,27 @@
 import React, { useState, useEffect } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import { translations } from '../i18n';
-import { playChime, speakAnnouncement } from '../audio';
+import { playChime, speakAnnouncement, unlockAudio } from '../audio';
 import { 
   Volume2, 
   VolumeX, 
   Clock, 
   Maximize2, 
-  QrCode, 
-  Radio, 
   ArrowRight, 
   Bell,
-  Sparkles
+  Users,
+  Tv,
+  Play
 } from 'lucide-react';
 
 export default function TvView({ 
   lang, 
   branches = [],
   selectedBranch = 'PUTRAJAYA',
-  activeTickets, 
+  activeTickets = [], 
+  waitingTickets = [],
   lastCalledTicket, 
-  counters 
+  counters = []
 }) {
   const t = translations[lang];
 
@@ -30,6 +32,8 @@ export default function TvView({
 
   const [currentTime, setCurrentTime] = useState(new Date());
   const [audioEnabled, setAudioEnabled] = useState(true);
+  const [tvStarted, setTvStarted] = useState(false);
+  const [selectedZone, setSelectedZone] = useState('ALL'); // ALL, MYKAD, KELAHIRAN, KAHWIN, KHAS
   const [isFlashing, setIsFlashing] = useState(false);
 
   // Clock ticker
@@ -38,18 +42,35 @@ export default function TvView({
     return () => clearInterval(timer);
   }, []);
 
-  // Whenever lastCalledTicket changes or triggers recall: Flash and play audio chime + speech
+  // Filter tickets by selected TV Zone (for 5-TV setups across different halls)
+  const filteredActive = selectedZone === 'ALL'
+    ? activeTickets
+    : activeTickets.filter(tk => tk.category_id === selectedZone);
+
+  const filteredWaiting = selectedZone === 'ALL'
+    ? waitingTickets.filter(tk => tk.status === 'WAITING')
+    : waitingTickets.filter(tk => tk.status === 'WAITING' && tk.category_id === selectedZone);
+
+  // Whenever lastCalledTicket changes or triggers recall: Flash and play audio chime + 2x speech
   useEffect(() => {
-    if (lastCalledTicket) {
+    if (lastCalledTicket && lastCalledTicket.ticket) {
+      // Only ring if ticket belongs to this branch and matches TV zone filter
+      if (lastCalledTicket.ticket.branch_id && lastCalledTicket.ticket.branch_id !== selectedBranch) {
+        return;
+      }
+      if (selectedZone !== 'ALL' && lastCalledTicket.ticket.category_id !== selectedZone) {
+        return;
+      }
+
       setIsFlashing(true);
       if (audioEnabled) {
         playChime();
-        speakAnnouncement(lastCalledTicket.ticket.ticket_number, lastCalledTicket.counterNumber, lang);
+        speakAnnouncement(lastCalledTicket.ticket.ticket_number, lastCalledTicket.counterNumber, lang, 2);
       }
-      const timeout = setTimeout(() => setIsFlashing(false), 5000);
+      const timeout = setTimeout(() => setIsFlashing(false), 6000);
       return () => clearTimeout(timeout);
     }
-  }, [lastCalledTicket, audioEnabled, lang]);
+  }, [lastCalledTicket, audioEnabled, lang, selectedBranch, selectedZone]);
 
   // Fullscreen trigger helper
   const toggleFullscreen = () => {
@@ -60,8 +81,26 @@ export default function TvView({
     }
   };
 
-  // Main featured ticket is either the last called ticket or the first active ticket
-  const featuredTicket = lastCalledTicket?.ticket || activeTickets?.[0] || {
+  // Start TV with Sound (Quno-style browser audio unlock)
+  const handleStartTvWithSound = () => {
+    unlockAudio();
+    setAudioEnabled(true);
+    setTvStarted(true);
+  };
+
+  // Test sound button
+  const handleTestSound = () => {
+    playChime();
+    speakAnnouncement(featuredTicket.ticket_number, featuredCounter, lang, 1);
+  };
+
+  // Main featured ticket
+  const featuredTicket = (
+    lastCalledTicket?.ticket &&
+    (selectedZone === 'ALL' || lastCalledTicket.ticket.category_id === selectedZone)
+      ? lastCalledTicket.ticket
+      : filteredActive?.[0]
+  ) || {
     ticket_number: 'A-1001',
     category_id: 'MYKAD',
     counter_number: 1
@@ -69,54 +108,107 @@ export default function TvView({
 
   const featuredCounter = lastCalledTicket?.counterNumber || featuredTicket.counter_number || 1;
 
-  // Recent history (other tickets)
-  const recentHistory = activeTickets?.slice(1, 5) || [];
+  // Recent history (other called tickets)
+  const recentHistory = filteredActive?.slice(0, 4) || [];
+
+  // Next in line (up to 4 waiting tickets)
+  const nextInLine = filteredWaiting?.slice(0, 4) || [];
+
+  const citizenJoinUrl = `${window.location.origin}/#citizen`;
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-slate-950 text-white flex flex-col justify-between p-4 sm:p-8 select-none overflow-hidden relative">
+    <div className="min-h-[calc(100vh-4rem)] bg-slate-950 text-white flex flex-col justify-between p-4 sm:p-6 select-none overflow-hidden relative">
       
-      {/* Top TV Bar: Agency Identity, Audio Control, Time & Fullscreen */}
-      <div className="flex items-center justify-between pb-6 border-b border-slate-800">
+      {/* Quno-style "Tap to Start Screen with Sound" Overlay (Ensures Smart TV Audio Never Blocks) */}
+      {!tvStarted && (
+        <div 
+          onClick={handleStartTvWithSound}
+          className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center cursor-pointer p-6 text-center"
+        >
+          <div className="w-24 h-24 rounded-3xl bg-gradient-to-tr from-blue-600 to-indigo-700 flex items-center justify-center shadow-2xl ring-4 ring-amber-400 mb-6 animate-bounce">
+            <Volume2 className="w-12 h-12 text-white" />
+          </div>
+          <h2 className="text-2xl sm:text-4xl font-black text-white tracking-tight mb-2">
+            {lang === 'ms' ? 'Sentuh untuk Mula Skrin TV dengan Suara' : 'Tap to Start TV Screen with Sound'}
+          </h2>
+          <p className="text-sm text-slate-400 max-w-md mb-6">
+            {lang === 'ms'
+              ? 'Mengaktifkan sistem pengumuman suara automatik (2x ulangan panggilan) dan loceng lobi.'
+              : 'Activates automatic voice calling (2x repeat) and lobby chime.'}
+          </p>
+          <button
+            type="button"
+            className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-8 py-4 rounded-2xl text-base flex items-center space-x-2 shadow-xl"
+          >
+            <Play className="w-5 h-5 fill-current" />
+            <span>{lang === 'ms' ? 'AKTIFKAN SKRIN TV SEKARANG' : 'START TV DISPLAY NOW'}</span>
+          </button>
+        </div>
+      )}
+
+      {/* Top TV Bar: Agency Identity, TV Zone Filter (5 TVs), Audio Control, Time & Fullscreen */}
+      <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-800">
         
         {/* Brand */}
-        <div className="flex items-center space-x-4">
-          <div className="h-14 w-14 rounded-2xl bg-gradient-to-tr from-blue-700 via-blue-900 to-indigo-900 flex items-center justify-center text-white shadow-xl ring-2 ring-amber-400">
-            <span className="font-black text-xl tracking-tighter">JPN</span>
+        <div className="flex items-center space-x-3.5">
+          <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-blue-700 via-blue-900 to-indigo-900 flex items-center justify-center text-white shadow-xl ring-2 ring-amber-400">
+            <span className="font-black text-lg tracking-tighter">JPN</span>
           </div>
           <div>
-            <h1 className="text-xl sm:text-2xl font-black tracking-tight flex items-center space-x-2">
+            <h1 className="text-lg sm:text-xl font-black tracking-tight flex items-center space-x-2">
               <span>{t.tvDisplayTitle}</span>
             </h1>
-            <p className="text-xs sm:text-sm text-slate-400 font-medium">
+            <p className="text-xs text-slate-400 font-medium">
               {lang === 'ms' ? currentBranchObj.name_ms : currentBranchObj.name_en}
             </p>
           </div>
         </div>
 
-        {/* Right side: Audio, Clock & Fullscreen button */}
-        <div className="flex items-center space-x-4">
-          
+        {/* Center/Right: TV Unit Zone Filter (Supports 5 TV Units across different zones) */}
+        <div className="flex items-center flex-wrap gap-2">
+          <div className="flex items-center space-x-1.5 bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5">
+            <Tv className="w-4 h-4 text-amber-400" />
+            <select
+              value={selectedZone}
+              onChange={(e) => setSelectedZone(e.target.value)}
+              className="bg-transparent text-xs font-bold text-white outline-none cursor-pointer"
+            >
+              <option value="ALL" className="bg-slate-900">TV 1: Semua Zon (Lobi Utama)</option>
+              <option value="MYKAD" className="bg-slate-900">TV 2: Zon A — MyKad (K1-K4)</option>
+              <option value="KELAHIRAN" className="bg-slate-900">TV 3: Zon B — Kelahiran (K5-K6)</option>
+              <option value="KAHWIN" className="bg-slate-900">TV 4: Zon C — Perkahwinan (K7-K8)</option>
+              <option value="KHAS" className="bg-slate-900">TV 5: Zon D — Kaunter Khas (K9-K10)</option>
+            </select>
+          </div>
+
+          {/* Test Sound Button */}
+          <button
+            onClick={handleTestSound}
+            className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-bold text-slate-300 transition"
+          >
+            🔊 {lang === 'ms' ? 'Uji Suara' : 'Test Sound'}
+          </button>
+
           {/* Audio Announcer Toggle */}
           <button
             onClick={() => setAudioEnabled(!audioEnabled)}
-            className={`flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-bold transition border ${
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition border ${
               audioEnabled
-                ? 'bg-emerald-950/70 border-emerald-700 text-emerald-400 shadow-sm'
+                ? 'bg-emerald-950/70 border-emerald-700 text-emerald-400'
                 : 'bg-rose-950/70 border-rose-700 text-rose-400'
             }`}
           >
             {audioEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-            <span className="hidden sm:inline">{audioEnabled ? t.audioEnabled : t.audioDisabled}</span>
+            <span className="hidden md:inline">{audioEnabled ? '2x Suara Aktif' : 'Bisu'}</span>
           </button>
 
           {/* Clock */}
-          <div className="text-right">
-            <div className="text-xl sm:text-2xl font-black font-mono tracking-wider text-amber-400">
+          <div className="text-right pl-2">
+            <div className="text-lg sm:text-xl font-black font-mono tracking-wider text-amber-400">
               {currentTime.toLocaleTimeString('en-MY', { hour12: false })}
             </div>
-            <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">
+            <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">
               {currentTime.toLocaleDateString(lang === 'ms' ? 'ms-MY' : 'en-MY', { 
-                weekday: 'short', 
                 day: 'numeric', 
                 month: 'short', 
                 year: 'numeric' 
@@ -127,35 +219,36 @@ export default function TvView({
           {/* Fullscreen Button */}
           <button
             onClick={toggleFullscreen}
-            className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white transition"
+            className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white transition"
             title="Fullscreen"
           >
             <Maximize2 className="w-4 h-4" />
           </button>
-
         </div>
 
       </div>
 
       {/* Main Board Center Display */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 my-auto py-6 items-center">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 my-auto py-4 items-stretch">
         
-        {/* Giant Featured Called Number (8 Columns) */}
-        <div className="lg:col-span-8">
-          <div className={`rounded-3xl p-8 sm:p-12 text-center transition-all duration-300 relative overflow-hidden bg-gradient-to-b from-slate-900 to-slate-900/90 border-4 ${
+        {/* Giant Featured Called Number + Active Counters Grid (8 Columns) */}
+        <div className="lg:col-span-8 flex flex-col justify-between space-y-4">
+          <div className={`rounded-3xl p-6 sm:p-10 text-center transition-all duration-300 relative overflow-hidden bg-gradient-to-b from-slate-900 to-slate-900/90 border-4 flex-1 flex flex-col justify-center ${
             isFlashing 
               ? 'border-amber-400 shadow-[0_0_80px_rgba(245,158,11,0.5)] scale-[1.01]' 
               : 'border-slate-800 shadow-2xl'
           }`}>
             
             {/* Top Glow Ribbon */}
-            <div className="inline-flex items-center space-x-2 bg-amber-500/20 text-amber-300 border border-amber-500/40 px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest mb-6">
-              <Bell className="w-4 h-4 animate-bounce" />
-              <span>{t.nowCalling}</span>
+            <div>
+              <div className="inline-flex items-center space-x-2 bg-amber-500/20 text-amber-300 border border-amber-500/40 px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest mb-4">
+                <Bell className="w-4 h-4 animate-bounce" />
+                <span>{t.nowCalling}</span>
+              </div>
             </div>
 
             {/* Huge Number & Counter Split */}
-            <div className="flex flex-col md:flex-row items-center justify-around gap-6">
+            <div className="flex flex-col md:flex-row items-center justify-around gap-6 my-2">
               
               {/* Ticket Big Box */}
               <div>
@@ -189,62 +282,98 @@ export default function TvView({
 
             </div>
 
-            <p className="mt-8 text-xs sm:text-sm text-slate-400 font-medium">
+            <p className="mt-4 text-xs sm:text-sm text-slate-400 font-medium">
               {t.pleaseProceed}
             </p>
+          </div>
 
+          {/* Recent Calls Strip (4 boxes across bottom of left column) */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[0, 1, 2, 3].map((idx) => {
+              const item = recentHistory[idx];
+              return (
+                <div
+                  key={idx}
+                  className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5 flex items-center justify-between"
+                >
+                  <div>
+                    <span className="text-[10px] text-slate-500 font-bold uppercase block">
+                      {lang === 'ms' ? 'Sedang Layan' : 'Serving'}
+                    </span>
+                    <span className="text-xl font-black font-mono text-white">
+                      {item ? item.ticket_number : '—'}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] text-blue-400 font-bold uppercase block">
+                      {t.counterLabel}
+                    </span>
+                    <span className="text-xl font-black font-mono text-amber-400">
+                      {item ? item.counter_number : '—'}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
-        {/* Right Side Column (4 Columns): Recent Calls & QR Kiosk Banner */}
-        <div className="lg:col-span-4 space-y-6">
+        {/* Right Side Column (4 Columns): Quno-style "Next in Line" + Scannable QR Code */}
+        <div className="lg:col-span-4 flex flex-col justify-between space-y-4">
           
-          {/* Previous Calls Box */}
-          <div className="bg-slate-900/90 rounded-3xl p-6 border border-slate-800 shadow-xl">
-            <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-4 flex items-center space-x-2">
-              <Clock className="w-4 h-4 text-blue-500" />
-              <span>{t.previousCalls}</span>
-            </h3>
+          {/* Next in Line Panel (Seterusnya Dalam Giliran) */}
+          <div className="bg-slate-900/90 rounded-3xl p-5 border border-slate-800 shadow-xl flex-1 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xs font-black uppercase tracking-widest text-emerald-400 flex items-center space-x-2">
+                  <Users className="w-4 h-4" />
+                  <span>{lang === 'ms' ? 'GILIRAN SETERUSNYA (NEXT)' : 'NEXT IN LINE'}</span>
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-950 text-emerald-300 border border-emerald-800">
+                  {filteredWaiting.length} {lang === 'ms' ? 'Menunggu' : 'Waiting'}
+                </span>
+              </div>
 
-            <div className="space-y-3">
-              {recentHistory.length > 0 ? (
-                recentHistory.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-950 border border-slate-800"
-                  >
-                    <div>
-                      <span className="text-xl font-black font-mono text-white">
+              <div className="grid grid-cols-2 gap-2.5">
+                {nextInLine.length > 0 ? (
+                  nextInLine.map((item, i) => (
+                    <div
+                      key={item.id}
+                      className="p-3 rounded-2xl bg-slate-950 border border-slate-800 text-center"
+                    >
+                      <span className="text-[10px] text-slate-500 font-bold block">
+                        #{i + 1} • {item.category_id}
+                      </span>
+                      <span className="text-2xl font-black font-mono text-sky-400">
                         {item.ticket_number}
                       </span>
-                      <span className="text-[10px] text-slate-500 ml-2 font-mono">
-                        {item.category_id}
-                      </span>
                     </div>
-                    <div className="px-3 py-1 rounded-xl bg-blue-950 text-blue-300 border border-blue-800 text-xs font-black">
-                      {t.counterLabel} {item.counter_number || 1}
-                    </div>
+                  ))
+                ) : (
+                  <div className="col-span-2 py-8 text-center text-slate-500 text-xs font-medium">
+                    {lang === 'ms' ? 'Tiada pemohon sedang menunggu' : 'No applicants waiting'}
                   </div>
-                ))
-              ) : (
-                <div className="py-6 text-center text-slate-500 text-xs font-medium">
-                  Tiada panggilan terdahulu
-                </div>
-              )}
+                )}
+              </div>
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+              <span>{lang === 'ms' ? 'Kaunter Beroperasi:' : 'Active Counters:'}</span>
+              <span className="font-black text-white">10 Kaunter (K1 – K10)</span>
             </div>
           </div>
 
-          {/* Lobby QR Code Prompt for Rakyat */}
+          {/* Real Scannable Lobby QR Code for Rakyat */}
           <div className="bg-gradient-to-br from-blue-950 to-indigo-950 rounded-3xl p-5 border border-blue-900 shadow-xl flex items-center space-x-4">
-            <div className="w-20 h-20 bg-white rounded-2xl p-2 flex items-center justify-center flex-shrink-0 shadow-lg">
-              <QrCode className="w-16 h-16 text-slate-900" />
+            <div className="bg-white rounded-2xl p-2.5 flex items-center justify-center flex-shrink-0 shadow-lg">
+              <QRCodeSVG value={citizenJoinUrl} size={84} level="M" />
             </div>
             <div>
               <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wider">
                 {t.scanForVirtualTicket}
               </h4>
               <p className="text-[11px] text-slate-300 mt-1 leading-snug">
-                Imbas kod ini menggunakan kamera telefon untuk memantau giliran anda di mana-mana sahaja.
+                Imbas kod QR ini menggunakan kamera telefon untuk ambil nombor & pantau giliran.
               </p>
             </div>
           </div>
@@ -254,14 +383,12 @@ export default function TvView({
       </div>
 
       {/* Bottom Announcement Marquee Ticker */}
-      <div className="bg-blue-950/80 border border-blue-900/80 rounded-2xl p-3 flex items-center space-x-3 overflow-hidden">
+      <div className="bg-blue-950/80 border border-blue-900/80 rounded-2xl p-2.5 flex items-center space-x-3 overflow-hidden">
         <div className="px-2.5 py-1 rounded-lg bg-amber-500 text-slate-950 text-[10px] font-black uppercase tracking-wider flex-shrink-0">
           INFO JPN
         </div>
-        <div className="overflow-hidden whitespace-nowrap text-xs text-blue-200 font-medium">
-          <marquee scrollamount="6" className="w-full">
-            {t.tickerNotice} &nbsp;&nbsp;•••&nbsp;&nbsp; Waktu Operasi: 8.00 Pagi - 5.00 Petang (Isnin - Jumaat) &nbsp;&nbsp;•••&nbsp;&nbsp; Terima kasih kerana menggunakan Sistem Giliran Pintar JPN Putrajaya.
-          </marquee>
+        <div className="overflow-hidden whitespace-nowrap text-xs text-blue-200 font-medium w-full">
+          {t.tickerNotice} ••• 10 Kaunter Beroperasi & 5 Paparan TV Zon Pintar Aktif.
         </div>
       </div>
 

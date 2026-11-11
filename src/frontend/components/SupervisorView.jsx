@@ -168,7 +168,7 @@ export default function SupervisorView({
       <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-xl">
         <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider mb-4 flex items-center space-x-2">
           <span>{t.counterOverview}</span>
-          <span className="text-xs font-normal text-slate-400">(6 Kaunter Operasi)</span>
+          <span className="text-xs font-normal text-slate-400">({counters?.length || 10} Kaunter Operasi)</span>
         </h3>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
