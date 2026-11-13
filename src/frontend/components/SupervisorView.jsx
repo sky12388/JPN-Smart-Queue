@@ -41,6 +41,16 @@ export default function SupervisorView({
     }
   };
 
+  const formatCategories = (raw) => {
+    if (!raw) return 'SEMUA';
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.join(', ') : 'SEMUA';
+    } catch (e) {
+      return 'SEMUA';
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-6 sm:py-8 space-y-8">
       
@@ -190,7 +200,7 @@ export default function SupervisorView({
               <div>
                 <p className="text-xs font-bold text-slate-900 dark:text-white">{c.officer_name}</p>
                 <p className="text-[11px] text-slate-400 font-mono mt-0.5">
-                  Urusan: {c.assigned_categories ? JSON.parse(c.assigned_categories).join(', ') : 'SEMUA'}
+                  Urusan: {formatCategories(c.assigned_categories)}
                 </p>
               </div>
 

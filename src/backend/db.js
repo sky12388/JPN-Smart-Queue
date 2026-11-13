@@ -39,9 +39,25 @@ export const dbAll = (sql, params = []) => {
   });
 };
 
+// Atomically reserve the next ticket number for a branch + category + day.
+// The single UPSERT ... RETURNING statement is atomic, so concurrent requests
+// can never receive the same number.
+export async function nextTicketNumber(branchId, categoryId, code) {
+  const row = await dbGet(
+    `INSERT INTO ticket_sequences (branch_id, category_id, seq_date, last_number)
+     VALUES (?, ?, date('now', '+8 hours'), 1001)
+     ON CONFLICT(branch_id, category_id, seq_date)
+     DO UPDATE SET last_number = last_number + 1
+     RETURNING last_number`,
+    [branchId, categoryId]
+  );
+  return `${code}-${row.last_number}`;
+}
+
 export async function initDatabase() {
   // Optimize SQLite for concurrent reading and write-ahead log
   await dbRun("PRAGMA journal_mode = WAL;");
+  await dbRun("PRAGMA busy_timeout = 5000;");
   await dbRun("PRAGMA foreign_keys = ON;");
 
   // 1. Branches Table
@@ -105,6 +121,31 @@ export async function initDatabase() {
       estimated_wait_mins INTEGER DEFAULT 15
     );
   `);
+
+  // 5. Ticket number sequences (atomic, per branch + category + Malaysian day)
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS ticket_sequences (
+      branch_id TEXT NOT NULL,
+      category_id TEXT NOT NULL,
+      seq_date TEXT NOT NULL,
+      last_number INTEGER NOT NULL DEFAULT 1000,
+      PRIMARY KEY (branch_id, category_id, seq_date)
+    );
+  `);
+
+  // Indexes for the hot query paths
+  await dbRun("CREATE INDEX IF NOT EXISTS idx_tickets_branch_status ON tickets(branch_id, status);");
+  await dbRun("CREATE INDEX IF NOT EXISTS idx_tickets_category ON tickets(category_id);");
+  await dbRun("CREATE INDEX IF NOT EXISTS idx_tickets_ic ON tickets(ic_number);");
+
+  // Guard against duplicate numbers (skipped if a legacy DB already contains duplicates)
+  try {
+    await dbRun(
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_tickets_unique_number ON tickets(branch_id, ticket_number, date(created_at, '+8 hours'));"
+    );
+  } catch (err) {
+    console.warn('⚠ Could not create unique ticket-number index (legacy duplicates present):', err.message);
+  }
 
   // Seed default data if empty
   const branchCount = await dbGet('SELECT COUNT(*) as count FROM branches');

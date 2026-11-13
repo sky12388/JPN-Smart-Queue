@@ -23,15 +23,30 @@ const io = new Server(server, {
 });
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '100kb' }));
 
 // Socket.io connection handling
 io.on('connection', (socket) => {
   console.log(`[Socket.io] Client connected: ${socket.id}`);
 
   socket.on('join_branch', (branchId) => {
+    if (!branchId || typeof branchId !== 'string') return;
+    // A socket only ever watches one branch at a time
+    for (const room of socket.rooms) {
+      if (room !== socket.id) socket.leave(room);
+    }
     socket.join(branchId);
     console.log(`[Socket.io] Client ${socket.id} joined branch ${branchId}`);
+  });
+
+  socket.on('join_ticket', (ticketId) => {
+    const id = Number(ticketId);
+    if (!Number.isInteger(id) || id <= 0) return;
+    // A device tracks at most one of its own tickets at a time
+    for (const room of socket.rooms) {
+      if (room.startsWith('ticket:')) socket.leave(room);
+    }
+    socket.join(`ticket:${id}`);
   });
 
   socket.on('disconnect', () => {
@@ -56,24 +71,36 @@ if (fs.existsSync(distPath)) {
 }
 
 // Background Task: Auto-forfeit check (Every 60 seconds)
-// Tickets in PENDING_CHECKIN older than 20 minutes are forfeited to protect counter capacity
+// Tickets still in PENDING_CHECKIN after the 15-minute arrival safeguard are
+// forfeited to protect counter capacity (matches the 15-min UI countdown).
 setInterval(async () => {
   try {
     const expiredTickets = await dbAll(`
       SELECT id, ticket_number, branch_id FROM tickets 
       WHERE status = 'PENDING_CHECKIN' 
-      AND (strftime('%s', 'now') - strftime('%s', created_at)) > 1200
+      AND (strftime('%s', 'now') - strftime('%s', created_at)) > 900
     `);
 
     if (expiredTickets && expiredTickets.length > 0) {
+      const affectedBranches = new Set();
+
       for (const t of expiredTickets) {
         await dbRun(
           "UPDATE tickets SET status = 'NO_SHOW', completed_at = CURRENT_TIMESTAMP WHERE id = ?",
           [t.id]
         );
+
+        const updatedTicket = await dbGet('SELECT * FROM tickets WHERE id = ?', [t.id]);
+        if (updatedTicket) {
+          io.to(`ticket:${t.id}`).emit('ticket_update', updatedTicket);
+        }
+        affectedBranches.add(t.branch_id);
         console.log(`[Auto-Forfeit] Ticket ${t.ticket_number} auto-forfeited due to check-in timeout.`);
       }
-      io.emit('tickets_auto_forfeited', { count: expiredTickets.length });
+
+      for (const branchId of affectedBranches) {
+        io.to(branchId).emit('tickets_auto_forfeited', { branchId, count: expiredTickets.length });
+      }
     }
   } catch (err) {
     console.error('[Auto-Forfeit Worker Error]:', err.message);

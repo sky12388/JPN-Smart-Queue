@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import confetti from 'canvas-confetti';
 import Navbar from './components/Navbar';
@@ -65,13 +65,22 @@ export default function App() {
     localStorage.setItem('smartqueue_lang', lang);
   }, [lang]);
 
-  // Persist Branch
+  // Persist Branch + keep the socket subscribed to the active branch room
+  const selectedBranchRef = useRef(selectedBranch);
   useEffect(() => {
+    selectedBranchRef.current = selectedBranch;
     localStorage.setItem('smartqueue_branch', selectedBranch);
     if (socket.connected) {
       socket.emit('join_branch', selectedBranch);
     }
+    fetchStats(selectedBranch);
   }, [selectedBranch]);
+
+  // Keep a live ref of the user's own ticket (used by socket handlers)
+  const activeTicketRef = useRef(activeTicket);
+  useEffect(() => {
+    activeTicketRef.current = activeTicket;
+  }, [activeTicket]);
 
   // Persist Active Ticket
   useEffect(() => {
@@ -102,9 +111,9 @@ export default function App() {
     }
   };
 
-  const fetchStats = async () => {
+  const fetchStats = async (branchId = selectedBranch) => {
     try {
-      const res = await fetch('/api/stats');
+      const res = await fetch(`/api/stats?branch_id=${encodeURIComponent(branchId)}`);
       const data = await res.json();
       if (data.success) {
         setStats(data.stats);
@@ -117,11 +126,13 @@ export default function App() {
   // Socket.io Real-Time Synchronization
   useEffect(() => {
     fetchMeta();
-    fetchStats();
+    fetchStats(selectedBranchRef.current);
 
     socket.on('connect', () => {
       setIsConnected(true);
-      socket.emit('join_branch', 'PUTRAJAYA');
+      socket.emit('join_branch', selectedBranchRef.current);
+      const mine = activeTicketRef.current;
+      if (mine) socket.emit('join_ticket', mine.id);
     });
 
     socket.on('disconnect', () => {
@@ -129,31 +140,49 @@ export default function App() {
     });
 
     socket.on('queue_update', (data) => {
+      // Ignore updates belonging to a branch this screen is not watching
+      if (data.branchId && data.branchId !== selectedBranchRef.current) return;
+
       if (data.stats) setStats(data.stats);
       if (data.counters) setCounters(data.counters);
       if (data.waitingTickets) setWaitingTickets(data.waitingTickets);
       if (data.activeTickets) setActiveTickets(data.activeTickets);
 
-      // If user has an active ticket, refresh its status from update
+      // Refresh the user's own ticket from the queue payload, recomputing peopleAhead live
       setActiveTicket((prev) => {
         if (!prev) return null;
         const all = [...(data.waitingTickets || []), ...(data.activeTickets || [])];
         const found = all.find((t) => t.id === prev.id);
-        if (found) {
-          // If called, celebrate with confetti on user's phone!
-          if (found.status === 'CALLED' && prev.status !== 'CALLED') {
-            confetti({ particleCount: 70, spread: 60 });
-          }
-          return found;
+        if (!found) return prev;
+
+        const peopleAhead = (data.waitingTickets || []).filter(
+          (t) => t.category_id === found.category_id && t.status === 'WAITING' && t.id < found.id
+        ).length;
+
+        if (found.status === 'CALLED' && prev.status !== 'CALLED') {
+          confetti({ particleCount: 70, spread: 60 });
         }
-        return prev;
+        return { ...found, peopleAhead };
+      });
+    });
+
+    // Terminal statuses (COMPLETED / NO_SHOW / CANCELLED) only arrive here
+    socket.on('ticket_update', (ticket) => {
+      if (!ticket) return;
+      setActiveTicket((prev) => {
+        if (!prev || prev.id !== ticket.id) return prev;
+        if (ticket.status === 'CALLED' && prev.status !== 'CALLED') {
+          confetti({ particleCount: 70, spread: 60 });
+        }
+        return ticket;
       });
     });
 
     socket.on('ticket_called', (event) => {
       setLastCalledTicket(event);
-      // Trigger subtle vibration on mobile devices if supported
-      if ('vibrate' in navigator) {
+      // Only buzz the phone when the called ticket belongs to this device
+      const mine = activeTicketRef.current;
+      if (mine && event.ticket && event.ticket.id === mine.id && 'vibrate' in navigator) {
         navigator.vibrate([200, 100, 200]);
       }
     });
@@ -162,9 +191,17 @@ export default function App() {
       socket.off('connect');
       socket.off('disconnect');
       socket.off('queue_update');
+      socket.off('ticket_update');
       socket.off('ticket_called');
     };
   }, []);
+
+  // Subscribe this device to its own ticket room so final status changes arrive
+  useEffect(() => {
+    if (activeTicket && socket.connected) {
+      socket.emit('join_ticket', activeTicket.id);
+    }
+  }, [activeTicket?.id]);
 
   // Action: Issue Virtual Ticket
   const handleIssueTicket = async (ticketData) => {
@@ -212,10 +249,23 @@ export default function App() {
     }
   };
 
-  // Action: Cancel Ticket
-  const handleCancelTicket = (ticketId) => {
-    if (confirm('Adakah anda pasti mahu membatalkan tiket giliran ini?')) {
+  // Action: Cancel Ticket (persisted on the server so the slot is actually released)
+  const handleCancelTicket = async (ticketId) => {
+    if (!confirm('Adakah anda pasti mahu membatalkan tiket giliran ini?')) return;
+    try {
+      const res = await fetch('/api/tickets/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticket_id: ticketId })
+      });
+      const data = await res.json();
+      if (!data.success) {
+        alert(data.error || 'Gagal membatalkan tiket.');
+        return;
+      }
       setActiveTicket(null);
+    } catch (e) {
+      alert('Ralat rangkaian semasa membatalkan tiket.');
     }
   };
 
@@ -327,7 +377,7 @@ export default function App() {
             branches={branches}
             selectedBranch={selectedBranch}
             setSelectedBranch={setSelectedBranch}
-            waitingTickets={waitingTickets}
+            waitingTickets={waitingTickets.filter(t => t.branch_id === selectedBranch)}
             onCheckinTicket={handleCheckinTicket}
           />
         )}
@@ -338,6 +388,7 @@ export default function App() {
             branches={branches}
             selectedBranch={selectedBranch}
             counters={counters.filter(c => c.branch_id === selectedBranch)}
+            stats={stats}
             activeTickets={activeTickets.filter(t => t.branch_id === selectedBranch)}
             waitingTickets={waitingTickets.filter(t => t.branch_id === selectedBranch)}
             onCallNext={handleCallNext}

@@ -30,13 +30,14 @@ export default function CitizenView({
   categories, 
   activeTicket, 
   setActiveTicket, 
+  selectedBranch,
+  setSelectedBranch,
   onIssueTicket, 
   onCheckinTicket,
   onCancelTicket
 }) {
   const t = translations[lang];
 
-  const [selectedBranch, setSelectedBranch] = useState('PUTRAJAYA');
   const [selectedCategory, setSelectedCategory] = useState('MYKAD');
   const [citizenName, setCitizenName] = useState('');
   const [icNumber, setIcNumber] = useState('');
@@ -226,33 +227,28 @@ export default function CitizenView({
     setIsCheckingIn(true);
     setCheckinMessage(null);
 
-    // Try HTML5 Geolocation API with fallback
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          const res = await onCheckinTicket(activeTicket.id, 'GPS', position.coords.latitude, position.coords.longitude);
-          setCheckinMessage(res.message);
-          playScanBeep();
-          confetti({ particleCount: 50, spread: 50 });
-          setIsCheckingIn(false);
-        },
-        async () => {
-          const branch = branches.find(b => b.id === activeTicket.branch_id) || { lat: 2.9234, lng: 101.6888 };
-          const res = await onCheckinTicket(activeTicket.id, 'GPS', branch.lat, branch.lng);
-          setCheckinMessage(res.message);
-          playScanBeep();
-          confetti({ particleCount: 50, spread: 50 });
-          setIsCheckingIn(false);
-        },
-        { timeout: 5000 }
-      );
-    } else {
-      const res = await onCheckinTicket(activeTicket.id, 'GPS', 2.9234, 101.6888);
-      setCheckinMessage(res.message);
-      playScanBeep();
-      confetti({ particleCount: 50, spread: 50 });
+    if (!navigator.geolocation) {
+      setCheckinMessage('Peranti ini tidak menyokong GPS. Sila gunakan imbasan Kod QR Kiosk di pintu masuk.');
       setIsCheckingIn(false);
+      return;
     }
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const res = await onCheckinTicket(activeTicket.id, 'GPS', position.coords.latitude, position.coords.longitude);
+        setCheckinMessage(res.message || res.error);
+        if (res.success) {
+          playScanBeep();
+          confetti({ particleCount: 50, spread: 50 });
+        }
+        setIsCheckingIn(false);
+      },
+      async () => {
+        setCheckinMessage('Lokasi GPS tidak dapat dikesan. Sila hidupkan perkhidmatan lokasi atau gunakan imbasan Kod QR Kiosk di pintu masuk.');
+        setIsCheckingIn(false);
+      },
+      { timeout: 8000, enableHighAccuracy: true }
+    );
   };
 
   // Triggered when scanning premises QR code
@@ -262,7 +258,7 @@ export default function CitizenView({
     confetti({ particleCount: 70, spread: 60 });
 
     const res = await onCheckinTicket(activeTicket.id, 'QR_KIOSK', null, null, scannedCode);
-    setCheckinMessage(res.message);
+    setCheckinMessage(res.message || res.error);
     setIsCheckingIn(false);
     setShowQrModal(false);
   };
@@ -507,6 +503,7 @@ export default function CitizenView({
                 {activeTicket.status === 'SERVING' && t.statusServing}
                 {activeTicket.status === 'COMPLETED' && t.statusCompleted}
                 {activeTicket.status === 'NO_SHOW' && t.statusNoShow}
+                {activeTicket.status === 'CANCELLED' && t.statusCancelled}
               </div>
             </div>
 
@@ -577,6 +574,25 @@ export default function CitizenView({
                 </div>
               )}
 
+              {/* Terminal Status Panel (Completed / No-Show / Cancelled) */}
+              {['COMPLETED', 'NO_SHOW', 'CANCELLED'].includes(activeTicket.status) && (
+                <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-2xl text-left space-y-3">
+                  <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
+                    {activeTicket.status === 'COMPLETED' && t.terminalCompletedDesc}
+                    {activeTicket.status === 'NO_SHOW' && t.terminalNoShowDesc}
+                    {activeTicket.status === 'CANCELLED' && t.terminalCancelledDesc}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTicket(null)}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl text-xs flex items-center justify-center space-x-2 shadow-sm active:scale-95 transition"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    <span>{t.btnNewTicket}</span>
+                  </button>
+                </div>
+              )}
+
               {/* Waiting Information (People Ahead & Estimated Wait Live Countdown) */}
               {activeTicket.status === 'WAITING' && (
                 <div className="grid grid-cols-2 gap-3 py-3 border-y border-slate-100 dark:border-slate-800">
@@ -586,7 +602,7 @@ export default function CitizenView({
                       <span className="text-[11px] font-semibold">{t.peopleAhead}</span>
                     </div>
                     <div className="text-2xl font-black text-slate-900 dark:text-white">
-                      {activeTicket.peopleAhead ?? 1}
+                      {activeTicket.peopleAhead ?? 0}
                     </div>
                     <span className="text-[10px] text-slate-400">orang di hadapan</span>
                   </div>
@@ -694,24 +710,26 @@ export default function CitizenView({
 
             </div>
 
-            {/* Footer Actions */}
-            <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <button
-                onClick={() => onCancelTicket(activeTicket.id)}
-                className="text-xs font-semibold text-rose-600 dark:text-rose-400 hover:underline flex items-center space-x-1"
-              >
-                <XCircle className="w-3.5 h-3.5" />
-                <span>{t.btnCancelTicket}</span>
-              </button>
+            {/* Footer Actions (hidden once the ticket is in a terminal state) */}
+            {!['COMPLETED', 'NO_SHOW', 'CANCELLED'].includes(activeTicket.status) && (
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <button
+                  onClick={() => onCancelTicket(activeTicket.id)}
+                  className="text-xs font-semibold text-rose-600 dark:text-rose-400 hover:underline flex items-center space-x-1"
+                >
+                  <XCircle className="w-3.5 h-3.5" />
+                  <span>{t.btnCancelTicket}</span>
+                </button>
 
-              <button
-                onClick={() => setActiveTicket(null)}
-                className="text-xs font-semibold text-slate-600 dark:text-slate-400 hover:underline flex items-center space-x-1"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>Ambil Tiket Lain</span>
-              </button>
-            </div>
+                <button
+                  onClick={() => onCancelTicket(activeTicket.id)}
+                  className="text-xs font-semibold text-slate-600 dark:text-slate-400 hover:underline flex items-center space-x-1"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>{t.btnNewTicket}</span>
+                </button>
+              </div>
+            )}
 
           </div>
         </div>

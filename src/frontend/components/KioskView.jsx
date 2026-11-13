@@ -35,16 +35,23 @@ export default function KioskView({ lang, onCheckinTicket, waitingTickets }) {
 
   const handleSimulatedScan = async (ticket) => {
     setIsScanning(true);
-    playScanBeep();
-    confetti({ particleCount: 60, spread: 60 });
 
     try {
       const res = await onCheckinTicket(ticket.id, 'QR_KIOSK', null, null, `KIOSK-MAIN-DOOR-${dynamicToken.slice(-4)}`);
-      setScanResult({
-        success: true,
-        message: `Tiket ${ticket.ticket_number} (${ticket.citizen_name}) berjaya disahkan di Kiosk Pintu Masuk!`,
-        ticket: ticket
-      });
+      if (res && res.success) {
+        playScanBeep();
+        confetti({ particleCount: 60, spread: 60 });
+        setScanResult({
+          success: true,
+          message: `Tiket ${ticket.ticket_number} (${ticket.citizen_name}) berjaya disahkan di Kiosk Pintu Masuk!`,
+          ticket: ticket
+        });
+      } else {
+        setScanResult({
+          success: false,
+          message: (res && (res.error || res.message)) || 'Gagal mengesahkan tiket.'
+        });
+      }
     } catch (e) {
       setScanResult({ success: false, message: 'Gagal mengesahkan tiket.' });
     } finally {

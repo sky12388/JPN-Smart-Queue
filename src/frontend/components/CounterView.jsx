@@ -20,6 +20,7 @@ export default function CounterView({
   counters = [],
   activeTickets = [],
   waitingTickets = [],
+  stats,
   onCallNext,
   onRecall,
   onStartServe,
@@ -252,7 +253,7 @@ export default function CounterView({
               </div>
               <div>
                 <p className="text-[11px] text-slate-400 font-semibold">{t.servedCount}</p>
-                <p className="text-xl font-black text-slate-900 dark:text-white">18 Selesai</p>
+                <p className="text-xl font-black text-slate-900 dark:text-white">{stats?.completed ?? 0} Selesai</p>
               </div>
             </div>
 
@@ -262,7 +263,7 @@ export default function CounterView({
               </div>
               <div>
                 <p className="text-[11px] text-slate-400 font-semibold">{t.avgTime}</p>
-                <p className="text-xl font-black text-slate-900 dark:text-white">7.4 minit</p>
+                <p className="text-xl font-black text-slate-900 dark:text-white">{stats?.avgServiceMins ?? '0.0'} minit</p>
               </div>
             </div>
           </div>
